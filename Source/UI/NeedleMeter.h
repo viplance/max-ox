@@ -16,6 +16,7 @@ private:
     void drawFaceplate(juce::Graphics& g, juce::Rectangle<float> bounds);
     void drawNeedle(juce::Graphics& g, juce::Rectangle<float> bounds, float normalised);
     void drawScaleMarks(juce::Graphics& g, juce::Point<float> pivot, float radius);
+    void drawDbLabel(juce::Graphics& g, juce::Point<float> pivot);
 
     MeterType meterType;
     float levelDb = -48.0f;
@@ -23,8 +24,7 @@ private:
 
     static constexpr float kMinDb = -48.0f;
     static constexpr float kMaxDb = 6.0f;
-    static constexpr float kGrMinDb = -24.0f;
-    static constexpr float kGrMaxDb = 0.0f;
+    static constexpr float kGrMaxReductionDb = 12.0f;
     static constexpr float kNeedleAngleStart = -0.85f;
     static constexpr float kNeedleAngleEnd = 0.85f;
 };

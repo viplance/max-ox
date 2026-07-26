@@ -50,16 +50,12 @@ void MaxOxAudioProcessorEditor::paint(juce::Graphics& g)
     drawLabel("M A X O X", { 0, 18, getWidth(), 32 }, cream, 22.0f);
 
     g.setFont(juce::Font(juce::FontOptions(10.0f)));
-    g.setColour(dimCream.withAlpha(0.45f));
-    g.drawText("TRANSPARENT MAXIMIZER", juce::Rectangle<int>(0, 44, getWidth(), 16), juce::Justification::centred);
-
-    g.setFont(juce::Font(juce::FontOptions(10.0f)));
     g.setColour(dimCream.withAlpha(0.5f));
     g.drawText("v" PLUGIN_VERSION, juce::Rectangle<int>(getWidth() - 80, 18, 70, 16), juce::Justification::centredRight);
 
     drawLabel("INPUT", inputMeter.getBounds().withY(inputMeter.getY() - 18).withHeight(14), dimCream, 10.0f);
     drawLabel("OUTPUT", outputMeter.getBounds().withY(outputMeter.getY() - 18).withHeight(14), dimCream, 10.0f);
-    drawLabel("GR", grMeter.getBounds().withY(grMeter.getY() - 18).withHeight(14), dimCream, 10.0f);
+    drawLabel("GAIN", grMeter.getBounds().withY(grMeter.getY() - 18).withHeight(14), dimCream, 10.0f);
     drawLabel("GAIN", gainSlider.getBounds().withY(gainSlider.getY() - 20).withHeight(16), cream, 12.0f);
 
     auto lcBounds = juce::Rectangle<float>(

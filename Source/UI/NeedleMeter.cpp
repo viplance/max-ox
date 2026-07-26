@@ -5,10 +5,16 @@ NeedleMeter::NeedleMeter(MeterType type) : meterType(type) {}
 
 void NeedleMeter::setLevelDb(float db)
 {
-    float minDb = (meterType == MeterType::GainReduction) ? kGrMinDb : kMinDb;
-    float maxDb = (meterType == MeterType::GainReduction) ? kGrMaxDb : kMaxDb;
-    const auto next = juce::jlimit(minDb, maxDb, db);
+    float minDb, maxDb;
+    if (meterType == MeterType::GainReduction) {
+        minDb = -kGrMaxReductionDb;
+        maxDb = 0.0f;
+    } else {
+        minDb = kMinDb;
+        maxDb = kMaxDb;
+    }
 
+    const auto next = juce::jlimit(minDb, maxDb, db);
     smoothedDb += 0.25f * (next - smoothedDb);
 
     if (std::abs(smoothedDb - levelDb) > 0.02f) {
@@ -22,20 +28,13 @@ void NeedleMeter::paint(juce::Graphics& g)
     auto bounds = getLocalBounds().toFloat().reduced(2.0f);
     drawFaceplate(g, bounds);
 
-    float minDb = (meterType == MeterType::GainReduction) ? kGrMinDb : kMinDb;
-    float maxDb = (meterType == MeterType::GainReduction) ? kGrMaxDb : kMaxDb;
-
     float normalised;
     if (meterType == MeterType::GainReduction) {
-        normalised = 1.0f - juce::jmap(levelDb, minDb, maxDb, 0.0f, 1.0f);
+        normalised = juce::jmap(levelDb, -kGrMaxReductionDb, 0.0f, 0.0f, 1.0f);
     } else {
-        float dbForScale = juce::jlimit(minDb, maxDb, levelDb);
-        float logMin = std::log10(1.0f + std::abs(minDb));
-        float logRange = std::log10(1.0f + std::abs(maxDb - minDb));
-        float logVal = std::log10(1.0f + std::abs(dbForScale - minDb));
-        normalised = logVal / logRange;
-        (void)logMin;
+        normalised = juce::jmap(levelDb, kMinDb, kMaxDb, 0.0f, 1.0f);
     }
+    normalised = juce::jlimit(0.0f, 1.0f, normalised);
 
     drawNeedle(g, bounds, normalised);
 }
@@ -57,6 +56,16 @@ void NeedleMeter::drawFaceplate(juce::Graphics& g, juce::Rectangle<float> bounds
     auto pivot = juce::Point<float>(bounds.getCentreX(), bounds.getBottom() - 12.0f);
     float radius = bounds.getWidth() * 0.38f;
     drawScaleMarks(g, pivot, radius);
+    drawDbLabel(g, pivot);
+}
+
+void NeedleMeter::drawDbLabel(juce::Graphics& g, juce::Point<float> pivot)
+{
+    g.setFont(juce::Font(juce::FontOptions(9.0f, juce::Font::italic)));
+    g.setColour(juce::Colour::fromRGB(60, 50, 40).withAlpha(0.7f));
+    g.drawText("dB",
+        juce::Rectangle<float>(pivot.x - 12.0f, pivot.y - 18.0f, 24.0f, 12.0f),
+        juce::Justification::centred);
 }
 
 void NeedleMeter::drawScaleMarks(juce::Graphics& g, juce::Point<float> pivot, float radius)
@@ -66,30 +75,33 @@ void NeedleMeter::drawScaleMarks(juce::Graphics& g, juce::Point<float> pivot, fl
     if (meterType == MeterType::GainReduction) {
         ScaleMark marks[] = {
             { 0.0f, "0", true },
-            { -3.0f, "-3", true },
-            { -6.0f, "-6", true },
-            { -9.0f, "-9", true },
-            { -12.0f, "-12", true },
-            { -18.0f, "-18", false },
-            { -24.0f, "-24", false },
+            { -1.0f, nullptr, false },
+            { -2.0f, nullptr, false },
+            { -3.0f, "3", true },
+            { -4.0f, nullptr, false },
+            { -5.0f, nullptr, false },
+            { -6.0f, "6", true },
+            { -9.0f, "9", true },
+            { -12.0f, "12", true },
         };
 
         for (auto& m : marks) {
-            float norm = 1.0f - juce::jmap(m.db, kGrMinDb, kGrMaxDb, 0.0f, 1.0f);
+            float norm = juce::jmap(m.db, -kGrMaxReductionDb, 0.0f, 0.0f, 1.0f);
             float angle = kNeedleAngleStart + norm * (kNeedleAngleEnd - kNeedleAngleStart);
 
             float outerR = radius + 6.0f;
-            float innerR = m.major ? radius - 2.0f : radius;
+            float innerR = m.major ? radius - 2.0f : radius + 1.0f;
             float labelR = radius + 18.0f;
 
-            auto outerPt = pivot + juce::Point<float>(std::sin(angle), -std::cos(angle)) * outerR;
-            auto innerPt = pivot + juce::Point<float>(std::sin(angle), -std::cos(angle)) * innerR;
-            auto labelPt = pivot + juce::Point<float>(std::sin(angle), -std::cos(angle)) * labelR;
+            auto dir = juce::Point<float>(std::sin(angle), -std::cos(angle));
+            auto outerPt = pivot + dir * outerR;
+            auto innerPt = pivot + dir * innerR;
+            auto labelPt = pivot + dir * labelR;
 
-            g.setColour(juce::Colour::fromRGB(60, 50, 40).withAlpha(m.major ? 0.8f : 0.4f));
+            g.setColour(juce::Colour::fromRGB(60, 50, 40).withAlpha(m.major ? 0.8f : 0.35f));
             g.drawLine(innerPt.x, innerPt.y, outerPt.x, outerPt.y, m.major ? 1.5f : 0.8f);
 
-            if (m.major) {
+            if (m.major && m.label != nullptr) {
                 g.setFont(juce::Font(juce::FontOptions(9.0f)));
                 g.setColour(juce::Colour::fromRGB(60, 50, 40).withAlpha(0.9f));
                 g.drawText(m.label,
@@ -104,6 +116,7 @@ void NeedleMeter::drawScaleMarks(juce::Graphics& g, juce::Point<float> pivot, fl
             { -24.0f, "-24", true },
             { -18.0f, "-18", true },
             { -12.0f, "-12", true },
+            { -9.0f, nullptr, false },
             { -6.0f, "-6", true },
             { -3.0f, "-3", true },
             { 0.0f, "0", true },
@@ -112,29 +125,25 @@ void NeedleMeter::drawScaleMarks(juce::Graphics& g, juce::Point<float> pivot, fl
         };
 
         for (auto& m : marks) {
-            float logMin = std::log10(1.0f + std::abs(kMinDb));
-            float logRange = std::log10(1.0f + std::abs(kMaxDb - kMinDb));
-            float logVal = std::log10(1.0f + std::abs(m.db - kMinDb));
-            float norm = logVal / logRange;
-            (void)logMin;
-
+            float norm = juce::jmap(m.db, kMinDb, kMaxDb, 0.0f, 1.0f);
             float angle = kNeedleAngleStart + norm * (kNeedleAngleEnd - kNeedleAngleStart);
 
             float outerR = radius + 6.0f;
-            float innerR = m.major ? radius - 2.0f : radius;
+            float innerR = m.major ? radius - 2.0f : radius + 1.0f;
             float labelR = radius + 18.0f;
 
-            auto outerPt = pivot + juce::Point<float>(std::sin(angle), -std::cos(angle)) * outerR;
-            auto innerPt = pivot + juce::Point<float>(std::sin(angle), -std::cos(angle)) * innerR;
-            auto labelPt = pivot + juce::Point<float>(std::sin(angle), -std::cos(angle)) * labelR;
+            auto dir = juce::Point<float>(std::sin(angle), -std::cos(angle));
+            auto outerPt = pivot + dir * outerR;
+            auto innerPt = pivot + dir * innerR;
+            auto labelPt = pivot + dir * labelR;
 
             bool isRed = m.db > 0.0f;
             g.setColour(isRed
                 ? juce::Colour::fromRGB(180, 50, 40).withAlpha(m.major ? 0.9f : 0.5f)
-                : juce::Colour::fromRGB(60, 50, 40).withAlpha(m.major ? 0.8f : 0.4f));
+                : juce::Colour::fromRGB(60, 50, 40).withAlpha(m.major ? 0.8f : 0.35f));
             g.drawLine(innerPt.x, innerPt.y, outerPt.x, outerPt.y, m.major ? 1.5f : 0.8f);
 
-            if (m.major) {
+            if (m.major && m.label != nullptr) {
                 g.setFont(juce::Font(juce::FontOptions(9.0f)));
                 g.setColour(isRed
                     ? juce::Colour::fromRGB(180, 50, 40).withAlpha(0.9f)

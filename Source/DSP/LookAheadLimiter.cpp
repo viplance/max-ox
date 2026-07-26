@@ -106,7 +106,9 @@ void LookAheadLimiter::process(juce::AudioBuffer<float>& buffer)
         int readPos = (delayWritePos - lookAheadSamples + bufSize) % bufSize;
         for (int ch = 0; ch < numChannels; ++ch) {
             float delayed = delayBuffer[(size_t) ch][(size_t) readPos];
-            buffer.setSample(ch, i, delayed * smoothedGain);
+            float out = delayed * smoothedGain;
+            out = juce::jlimit(-ceiling, ceiling, out);
+            buffer.setSample(ch, i, out);
         }
 
         maxGr = juce::jmin(maxGr, smoothedGain);
