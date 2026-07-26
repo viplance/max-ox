@@ -91,3 +91,36 @@ if (TARGET MaxOx_VST3)
     VERBATIM
   )
 endif()
+
+enable_testing()
+
+juce_add_console_app(MaxOxDSPTests
+  PRODUCT_NAME "MaxOx DSP Tests"
+)
+
+target_sources(MaxOxDSPTests PRIVATE
+  Tests/DSPTests.cpp
+  Source/DSP/LookAheadLimiter.cpp
+  Source/DSP/LookAheadLimiter.h
+)
+
+target_include_directories(MaxOxDSPTests PRIVATE Source)
+juce_generate_juce_header(MaxOxDSPTests)
+
+target_link_libraries(MaxOxDSPTests PRIVATE
+  juce::juce_audio_basics
+  juce::juce_dsp
+)
+
+set_target_properties(MaxOxDSPTests PROPERTIES
+  CXX_STANDARD 20
+  CXX_STANDARD_REQUIRED ON
+)
+
+if (MSVC)
+  target_compile_options(MaxOxDSPTests PRIVATE /W4)
+else()
+  target_compile_options(MaxOxDSPTests PRIVATE -Wall -Wextra -Wshadow)
+endif()
+
+add_test(NAME MaxOxDSPTests COMMAND MaxOxDSPTests)

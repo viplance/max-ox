@@ -4,7 +4,9 @@ A transparent VST3 maximizer plugin for macOS on Apple Silicon (M-series) with a
 
 ## Features
 
-- **Look-Ahead Limiter**: 5 ms look-ahead brick-wall limiter with soft-knee transition and cosine-windowed gain smoothing. Ceiling at −0.1 dBFS for true-peak safety.
+- **Look-Ahead Limiter**: 5 ms look-ahead limiter with 4× oversampled
+  inter-sample peak detection, soft-knee transition, cosine-windowed gain
+  smoothing, and host-reported latency. Ceiling at −0.1 dBTP.
 - **Adaptive Release**: Crest-factor-based release time — fast on sharp transients, slow on sustained material — preserves punch without pumping.
 - **Adaptive Low-Frequency Cut**: 5-band peakiness detector (30 / 55 / 90 / 150 / 250 Hz) compares narrow vs. wide band-pass energy around each centre. Surgically notches resonant low-end build-up while leaving musical bass untouched, inspired by the LF resonance suppression in [CanaryVoiceTune](https://github.com/viplance/canary-voice-tune).
 - **Single Gain Knob**: One control, 0–24 dB. Push harder for louder; the limiter and adaptive LF cut handle the rest.

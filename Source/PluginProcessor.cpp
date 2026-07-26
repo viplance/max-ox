@@ -37,6 +37,7 @@ void MaxOxAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     currentSampleRate = sampleRate;
     limiter.prepare(sampleRate, samplesPerBlock);
+    setLatencySamples(limiter.getLatencySamples());
     adaptiveLowCut.prepare(sampleRate, samplesPerBlock);
 }
 
