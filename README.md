@@ -4,11 +4,28 @@ A transparent VST3 maximizer plugin for macOS on Apple Silicon (M-series) with a
 
 ## Features
 
-- **Look-Ahead Limiter**: 5 ms look-ahead limiter with 4× oversampled
+- **Look-Ahead Limiter**: 5 ms look-ahead limiter with 8× oversampled
   inter-sample peak detection, soft-knee transition, cosine-windowed gain
-  smoothing, and host-reported latency. Ceiling at −0.1 dBTP.
+  smoothing, and host-reported latency. A reconstruction-aware 8× guard after
+  downsampling holds the final ceiling at −0.1 dBTP without a permanent
+  safety-margin loss.
 - **Adaptive Release**: Crest-factor-based release time — fast on sharp transients, slow on sustained material — preserves punch without pumping.
-- **Adaptive Low-Frequency Cut**: 5-band peakiness detector (30 / 55 / 90 / 150 / 250 Hz) compares narrow vs. wide band-pass energy around each centre. Surgically notches resonant low-end build-up while leaving musical bass untouched, inspired by the LF resonance suppression in [CanaryVoiceTune](https://github.com/viplance/canary-voice-tune).
+- **Adaptive Low-Frequency Control**: stereo-linked 5-band peakiness
+  detector (30 / 55 / 90 / 150 / 250 Hz) compares narrow vs. wide band-pass
+  energy and reduces a resonance only when the proposed change also lowers the
+  instantaneous linked peak. A transparent 10 Hz infrasonic filter removes
+  inaudible headroom consumption.
+- **Adaptive Phase Rotation**: continuously evaluates eight stereo-linked
+  four-stage all-pass configurations in the perceptually constrained
+  40–200 Hz / radius 0.65–0.98 region. Processing engages only when measured
+  peak reduction is at least 0.3 dB, with hysteresis and a 20 ms crossfade.
+- **Perceptual Transient Shaving**: a soft peak shaver inside the existing 8×
+  path removes at most 0.5–1.5 dB from high-crest transient events before the
+  clean limiter. Sustained tonal material bypasses it automatically.
+- **ERB Masking Control**: a 16-band ERB-spaced model tracks source and
+  residual energy with simultaneous and temporal masking. Shaving depth falls
+  automatically when its error becomes insufficiently masked, with additional
+  protection for tonal and stereo-side material.
 - **Single Gain Knob**: One control, 0–24 dB. Push harder for louder; the limiter and adaptive LF cut handle the rest.
 - **Analog Needle Meters**: Three VU-style needle meters — Input level, Gain Reduction, and Output level — plus a glowing LF CUT activity indicator.
 - **Hardware Chassis UI**: Dark metal faceplate with screws, ventilation slots, and cream-on-dark typography.
@@ -59,16 +76,28 @@ pnpm run clean:all    # remove build/ and vendor/
 ## DSP Architecture
 
 ```
-Input → Gain (+0…+24 dB) → Adaptive LF Cut → Look-Ahead Limiter → Output
-                                  ↑                    ↑
-                          5-band peakiness     5 ms delay line
-                          detector (narrow     soft-knee with
-                          vs. wide BP ratio)   adaptive release
+Input → Gain → Adaptive LF → Phase Rotator → 8× Peak Shaver → Limiter → TP Guard → Output
+                    ↑               ↑               ↑             ↑
+             linked peak      8 all-pass       ERB masking    true-peak
+             benefit test     candidates       controller     envelope
 ```
 
 1. **Gain stage** applies the user's drive setting.
-2. **Adaptive Low-Frequency Cut** runs five probe bands. At each centre a narrow band-pass (Q = 6) and a wide one (Q = 0.8) track the signal. When narrow/wide energy exceeds the peakiness threshold, the band is a resonance and gets notched; broad musical content stays below threshold and passes through.
-3. **Look-Ahead Limiter** delays the audio by 5 ms, scans ahead for peaks, and applies cosine-windowed gain reduction before the peak arrives. Release time adapts to the signal's crest factor.
+2. **Adaptive Low-Frequency Control** runs five probe bands. At each centre a narrow band-pass (Q = 6) and a wide one (Q = 0.8) track the signal. The linked gain changes only when the resonance is significant and attenuation reduces the linked instantaneous peak used as a limiter-burden proxy.
+3. **Adaptive Phase Rotation** continuously runs a sparse bank derived from
+   the useful parameter bounds reported by Välimäki et al. A linked 50 ms
+   analysis window selects a candidate only above 0.3 dB benefit; a 750 ms
+   hold prevents rapid switching, and bypass remains a first-class candidate.
+4. **Perceptual Peak Shaver** operates directly in the limiter's 8× domain.
+   Peak/RMS crest and peak novelty restrict it to transients, while a smooth
+   saturating knee and a hard 1.5 dB reduction budget bound the nonlinear
+   error. A 16-band ERB approximation measures the filtered residual against
+   the temporally smeared masking energy and continuously controls its depth.
+5. **Look-Ahead Limiter** delays the audio by 5 ms and schedules a cosine
+   attack only when a new, deeper peak appears; sustained constraints extend
+   the schedule in O(1). The release adapts continuously to the measured
+   peak/RMS crest factor. After reconstruction, a separate 8× detector and
+   2 ms guard use only the attenuation actually required to reach −0.1 dBTP.
 
 ## License
 

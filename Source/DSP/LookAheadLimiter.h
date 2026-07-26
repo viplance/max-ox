@@ -1,6 +1,8 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "PerceptualPeakShaver.h"
+#include "TruePeakGuard.h"
 #include <array>
 #include <vector>
 
@@ -18,15 +20,15 @@ private:
     static constexpr int kMaxChans = 2;
     static constexpr float kCeilingDb = -0.1f;
     static constexpr float kLookAheadMs = 5.0f;
-    static constexpr float kReleaseMs = 100.0f;
-    static constexpr float kFastReleaseMs = 25.0f;
-    static constexpr float kSlowReleaseMs = 400.0f;
-    static constexpr float kKneeDb = 3.0f;
-    static constexpr int kOversampleFactor = 4;
+    static constexpr float kReleaseMs = 90.0f;
+    static constexpr float kFastReleaseMs = 35.0f;
+    static constexpr float kSlowReleaseMs = 180.0f;
+    static constexpr float kKneeDb = 0.5f;
+    static constexpr int kOversampleFactor = 8;
     static constexpr float kRmsWindowMs = 50.0f;
     // Downsampling filters can ring above the gain-limited oversampled signal.
     // This guard keeps the reconstructed output at the public dBTP ceiling.
-    static constexpr float kReconstructionMarginDb = 0.35f;
+    static constexpr float kReconstructionMarginDb = 0.0f;
 
     float computeGain(float peakDb) const;
 
@@ -44,14 +46,18 @@ private:
     std::array<std::vector<float>, kMaxChans> delayBuffer;
     int delayWritePos = 0;
 
-    std::vector<float> gainEnvelope;
+    std::vector<float> gainSchedule;
     std::vector<float> attackWindow;
-    int gainWritePos = 0;
+    int scheduleReadPos = 0;
+    int samplesSinceFullSchedule = 0;
+    float lastScheduledTarget = 1.0f;
 
     float currentGain = 1.0f;
 
-    juce::dsp::Oversampling<float> oversampler { kMaxChans, 2,
+    juce::dsp::Oversampling<float> oversampler { kMaxChans, 3,
         juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, true };
+    PerceptualPeakShaver peakShaver;
+    TruePeakGuard truePeakGuard;
 
     std::atomic<float> gainReductionDb { 0.0f };
 };

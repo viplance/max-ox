@@ -15,16 +15,17 @@ void LookAheadLimiter::prepare(double sampleRate, int maxBlockSize)
     }
     delayWritePos = 0;
 
-    gainEnvelope.resize((size_t) (lookAheadSamples + maxBlockSize + 1), 1.0f);
-    std::fill(gainEnvelope.begin(), gainEnvelope.end(), 1.0f);
-    gainWritePos = 0;
-
-    attackWindow.resize((size_t) lookAheadSamples + 1);
+    gainSchedule.resize((size_t) lookAheadSamples + 1, 1.0f);
+    attackWindow.resize((size_t) lookAheadSamples + 1, 1.0f);
     for (int i = 0; i <= lookAheadSamples; ++i) {
         const float position = (float) i / (float) lookAheadSamples;
         attackWindow[(size_t) i] =
-            0.5f - 0.5f * std::cos(position * juce::MathConstants<float>::pi);
+            0.5f - 0.5f
+                * std::cos(position * juce::MathConstants<float>::pi);
     }
+    scheduleReadPos = 0;
+    samplesSinceFullSchedule = lookAheadSamples + 1;
+    lastScheduledTarget = 1.0f;
 
     auto timeConstant = [&](float ms) {
         return std::exp(-1.0f / (float) (sampleRate * ms / 1000.0));
@@ -36,8 +37,12 @@ void LookAheadLimiter::prepare(double sampleRate, int maxBlockSize)
 
     oversampler.reset();
     oversampler.initProcessing((size_t) maxBlockSize);
-    latencySamples = lookAheadSamples
-        + (int) std::lround(oversampler.getLatencyInSamples());
+    peakShaver.prepare(sampleRate, kOversampleFactor);
+    truePeakGuard.prepare(sampleRate, maxBlockSize);
+    latencySamples =
+        lookAheadSamples
+        + (int) std::lround(oversampler.getLatencyInSamples())
+        + truePeakGuard.getLatencySamples();
 
     currentGain = 1.0f;
     rmsEnvelope = 0.0f;
@@ -47,12 +52,16 @@ void LookAheadLimiter::reset()
 {
     for (auto& buf : delayBuffer)
         std::fill(buf.begin(), buf.end(), 0.0f);
-    std::fill(gainEnvelope.begin(), gainEnvelope.end(), 1.0f);
+    std::fill(gainSchedule.begin(), gainSchedule.end(), 1.0f);
     delayWritePos = 0;
-    gainWritePos = 0;
+    scheduleReadPos = 0;
+    samplesSinceFullSchedule = lookAheadSamples + 1;
+    lastScheduledTarget = 1.0f;
     currentGain = 1.0f;
     rmsEnvelope = 0.0f;
     oversampler.reset();
+    peakShaver.reset();
+    truePeakGuard.reset();
     gainReductionDb.store(0.0f, std::memory_order_relaxed);
 }
 
@@ -85,6 +94,7 @@ void LookAheadLimiter::process(juce::AudioBuffer<float>& buffer)
     auto outputBlock = juce::dsp::AudioBlock<float>(buffer);
     auto oversampledBlock =
         oversampler.processSamplesUp(juce::dsp::AudioBlock<const float>(buffer));
+    peakShaver.process(oversampledBlock, numChannels);
     const int oversampledSamples = (int) oversampledBlock.getNumSamples();
     const int oversamplingFactor = oversampledSamples / numSamples;
     const auto bufSize = (int) delayBuffer[0].size();
@@ -109,8 +119,38 @@ void LookAheadLimiter::process(juce::AudioBuffer<float>& buffer)
         float peakDb = juce::Decibels::gainToDecibels(peak, -96.0f);
         float targetGain = computeGain(peakDb);
 
-        if (targetGain < currentGain) {
-            currentGain = targetGain;
+        const int scheduleSize = (int) gainSchedule.size();
+        const int duePosition =
+            (scheduleReadPos + lookAheadSamples) % scheduleSize;
+        const float rescheduleThreshold =
+            juce::Decibels::decibelsToGain(-0.1f);
+        const bool dueNeedsMoreReduction =
+            targetGain < gainSchedule[(size_t) duePosition];
+        const bool isNewReduction =
+            targetGain < lastScheduledTarget * rescheduleThreshold
+            || samplesSinceFullSchedule > lookAheadSamples;
+
+        if (dueNeedsMoreReduction && isNewReduction) {
+            for (int offset = 0; offset <= lookAheadSamples; ++offset) {
+                const int position =
+                    (scheduleReadPos + offset) % scheduleSize;
+                const float candidate =
+                    1.0f
+                    + (targetGain - 1.0f) * attackWindow[(size_t) offset];
+                gainSchedule[(size_t) position] =
+                    juce::jmin(gainSchedule[(size_t) position], candidate);
+            }
+            lastScheduledTarget = targetGain;
+            samplesSinceFullSchedule = 0;
+        } else if (dueNeedsMoreReduction) {
+            gainSchedule[(size_t) duePosition] = targetGain;
+        }
+
+        const float scheduledGain = gainSchedule[(size_t) scheduleReadPos];
+        gainSchedule[(size_t) scheduleReadPos] = 1.0f;
+
+        if (scheduledGain < currentGain) {
+            currentGain = scheduledGain;
         } else {
             const float rms = std::sqrt(rmsEnvelope + 1.0e-12f);
             const float crestFactor = peak / (rms + 1.0e-12f);
@@ -128,19 +168,12 @@ void LookAheadLimiter::process(juce::AudioBuffer<float>& buffer)
                     releaseCoeff
                     + amount * (fastReleaseCoeff - releaseCoeff);
             }
-            currentGain = currentGain * adaptiveRelease + targetGain * (1.0f - adaptiveRelease);
+            currentGain =
+                currentGain * adaptiveRelease
+                + scheduledGain * (1.0f - adaptiveRelease);
         }
 
         currentGain = juce::jlimit(0.0001f, 1.0f, currentGain);
-        gainEnvelope[(size_t) gainWritePos] = currentGain;
-
-        float smoothedGain = 1.0f;
-        for (int la = 0; la <= lookAheadSamples; ++la) {
-            int idx = (gainWritePos - la + (int) gainEnvelope.size()) % (int) gainEnvelope.size();
-            float envGain = gainEnvelope[(size_t) idx];
-            float blended = 1.0f + (envGain - 1.0f) * attackWindow[(size_t) la];
-            smoothedGain = juce::jmin(smoothedGain, blended);
-        }
 
         for (int os = 0; os < oversamplingFactor; ++os) {
             const int sampleIndex = i * oversamplingFactor + os;
@@ -153,16 +186,21 @@ void LookAheadLimiter::process(juce::AudioBuffer<float>& buffer)
                     (delayWritePos - lookAheadSamplesOversampled + bufSize) % bufSize;
                 oversampledBlock.setSample(
                     (size_t) ch, (size_t) sampleIndex,
-                    delayBuffer[(size_t) ch][(size_t) readPos] * smoothedGain);
+                    delayBuffer[(size_t) ch][(size_t) readPos] * currentGain);
             }
             delayWritePos = (delayWritePos + 1) % bufSize;
         }
 
-        maxGr = juce::jmin(maxGr, smoothedGain);
-
-        gainWritePos = (gainWritePos + 1) % (int) gainEnvelope.size();
+        maxGr = juce::jmin(maxGr, currentGain);
+        scheduleReadPos = (scheduleReadPos + 1) % scheduleSize;
+        ++samplesSinceFullSchedule;
     }
 
     oversampler.processSamplesDown(outputBlock);
+    truePeakGuard.process(buffer);
+    maxGr = juce::jmin(
+        maxGr,
+        juce::Decibels::decibelsToGain(
+            truePeakGuard.getGainReductionDb()));
     gainReductionDb.store(juce::Decibels::gainToDecibels(maxGr, -48.0f), std::memory_order_relaxed);
 }

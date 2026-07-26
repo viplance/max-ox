@@ -33,8 +33,14 @@ target_sources(MaxOx PRIVATE
   Source/PluginEditor.h
   Source/DSP/LookAheadLimiter.cpp
   Source/DSP/LookAheadLimiter.h
+  Source/DSP/PerceptualPeakShaver.cpp
+  Source/DSP/PerceptualPeakShaver.h
+  Source/DSP/TruePeakGuard.cpp
+  Source/DSP/TruePeakGuard.h
   Source/DSP/AdaptiveLowCut.cpp
   Source/DSP/AdaptiveLowCut.h
+  Source/DSP/AdaptivePhaseRotator.cpp
+  Source/DSP/AdaptivePhaseRotator.h
   Source/UI/NeedleMeter.cpp
   Source/UI/NeedleMeter.h
   Source/UI/AnalogKnob.cpp
@@ -102,6 +108,14 @@ target_sources(MaxOxDSPTests PRIVATE
   Tests/DSPTests.cpp
   Source/DSP/LookAheadLimiter.cpp
   Source/DSP/LookAheadLimiter.h
+  Source/DSP/PerceptualPeakShaver.cpp
+  Source/DSP/PerceptualPeakShaver.h
+  Source/DSP/TruePeakGuard.cpp
+  Source/DSP/TruePeakGuard.h
+  Source/DSP/AdaptiveLowCut.cpp
+  Source/DSP/AdaptiveLowCut.h
+  Source/DSP/AdaptivePhaseRotator.cpp
+  Source/DSP/AdaptivePhaseRotator.h
 )
 
 target_include_directories(MaxOxDSPTests PRIVATE Source)

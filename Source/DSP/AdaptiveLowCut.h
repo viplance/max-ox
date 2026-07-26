@@ -19,21 +19,24 @@ private:
     static constexpr float kNarrowQ = 6.0f;
     static constexpr float kWideQ = 0.8f;
     static constexpr float kPeakThreshold = 0.72f;
-    static constexpr float kMaxReduction = 0.90f;
+    static constexpr float kMaxReduction = 0.55f;
+    static constexpr float kInfrasonicCutoffHz = 10.0f;
 
     double currentSampleRate = 44100.0;
 
+    std::array<juce::dsp::IIR::Filter<float>, kMaxChans> infrasonicFilters;
     std::array<std::array<juce::dsp::IIR::Filter<float>, kBands>, kMaxChans> narrowFilters;
     std::array<std::array<juce::dsp::IIR::Filter<float>, kBands>, kMaxChans> wideFilters;
 
     std::array<std::array<float, kBands>, kMaxChans> narrowEnv {};
     std::array<std::array<float, kBands>, kMaxChans> wideEnv {};
-    std::array<std::array<float, kBands>, kMaxChans> bandGain {};
+    std::array<float, kBands> bandGain {};
 
     float envAlpha = 0.0f;
-    float gainAlpha = 0.0f;
+    float gainAttackAlpha = 0.0f;
+    float gainReleaseAlpha = 0.0f;
 
-    float fullBandRmsEnv = 0.0f;
+    std::array<float, kMaxChans> fullBandRmsEnv {};
     float fullBandRmsAlpha = 0.0f;
 
     std::atomic<float> activity { 0.0f };

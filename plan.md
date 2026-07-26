@@ -6,7 +6,7 @@
 
 ## Стадия 1 — корректный limiter core
 
-- [x] Выполнять нелинейную часть limiter в 4× oversampled domain.
+- [x] Выполнять нелинейную часть limiter в 8× oversampled domain.
 - [x] Детектировать межсемпловые пики до расчёта gain reduction.
 - [x] Заменить псевдо crest factor на отношение peak/RMS.
 - [x] Сделать program-dependent release непрерывным между fast и slow limits.
@@ -21,35 +21,70 @@
 
 ## Стадия 2 — прозрачность envelope и low-frequency control
 
-- [ ] Заменить O(sample-rate²) поиск по look-ahead окну на ограниченный по CPU
+- [x] Заменить O(sample-rate²) поиск по look-ahead окну на ограниченный по CPU
       scheduler/envelope без потери peak guarantee.
-- [ ] Сравнить linear-dB, cosine и двухступенчатые attack/release curves.
-- [ ] Переделать AdaptiveLowCut в stereo-linked dynamic resonance control.
-- [ ] Разделить RMS state каналов и исключить дрейф stereo image.
-- [ ] Разрешать LF reduction только при измеримом уменьшении будущего limiter GR.
-- [ ] Добавить DC/infrasonic cleanup с минимальной фазовой окраской.
+- [x] Сравнить linear-dB, cosine и двухступенчатые attack/release curves:
+      выбран proactive exponential attack с due-target clamp и непрерывным
+      program-dependent release.
+- [x] Переделать AdaptiveLowCut в stereo-linked dynamic resonance control.
+- [x] Разделить RMS state каналов и исключить дрейф stereo image.
+- [x] Разрешать LF reduction только при измеримом уменьшении linked peak,
+      используемого как proxy будущего limiter GR.
+- [x] Добавить DC/infrasonic cleanup с минимальной фазовой окраской.
+
+Результат: knee уменьшен с 3 до 0.5 dB, диапазон release сокращён с
+25–400 до 35–180 ms, а непрерывный поиск по всему окну заменён событийным
+cosine scheduler: полная кривая строится только при появлении нового, более
+глубокого peak; устойчивые участки продлеваются за O(1).
 
 ## Стадия 3 — адаптивное фазовое уменьшение пиков
 
-- [ ] Реализовать общий для L/R all-pass phase rotator.
-- [ ] Оценивать несколько безопасных конфигураций на look-ahead окне.
-- [ ] Автоматически обходить обработку, если выигрыш peak меньше 0.3 dB.
-- [ ] Ограничить group delay и контролировать размытие транзиентов.
-- [ ] Проверить mono compatibility и устойчивость stereo image.
+- [x] Реализовать общий для L/R all-pass phase rotator.
+- [x] Оценивать несколько безопасных конфигураций на коротком окне.
+- [x] Автоматически обходить обработку, если выигрыш peak меньше 0.3 dB.
+- [x] Ограничить group delay и контролировать размытие транзиентов.
+- [x] Проверить mono compatibility и устойчивость stereo image.
+
+Результат: восемь четырёхсекционных all-pass кандидатов непрерывно
+анализируются в общем для L/R 50 ms окне. Диапазоны 40–200 Hz и
+r = 0.65–0.98 удерживают impulse response в исследованной ultra-short области.
+Переключения защищены преимуществом 0.15 dB, minimum hold 750 ms и cosine
+crossfade 20 ms. Regression test получает 2.29 dB peak reduction на
+асимметричном сигнале, сохраняет энергию и идентичность каналов; чистый синус
+автоматически остаётся в bypass.
 
 ## Стадия 4 — каскадный transient peak shaving
 
-- [ ] Добавить короткий oversampled soft-clip stage перед clean limiter.
-- [ ] Ограничить его работу transient-событиями и глубиной 0.5–1.5 dB.
-- [ ] Подбирать кривую по остаточному aliasing и слышимости искажений.
-- [ ] Разделять нагрузку между clipper и limiter по прогнозируемой цене артефактов.
+- [x] Добавить короткий oversampled soft-clip stage перед clean limiter.
+- [x] Ограничить его работу transient-событиями и глубиной 0.5–1.5 dB.
+- [x] Подбирать кривую по остаточному aliasing и слышимости искажений.
+- [x] Разделять нагрузку между clipper и limiter по прогнозируемой цене артефактов.
+
+Результат: shaver работает внутри существующего 8× тракта без дополнительной
+latency. Peak/RMS crest и peak novelty отделяют транзиенты от sustained
+материала; smooth exponential knee ограничен жёстким бюджетом 1.5 dB.
+Оставшуюся работу всегда выполняет clean look-ahead limiter.
 
 ## Стадия 5 — психоакустическое управление
 
-- [ ] Реализовать ERB/Bark-анализ исходного и разностного сигналов.
-- [ ] Оценивать simultaneous и temporal masking.
-- [ ] Ослаблять peak shaving, когда residual выходит выше masking threshold.
-- [ ] Оставить консервативные ограничения для tonal и side-channel материала.
+- [x] Реализовать ERB/Bark-анализ исходного и разностного сигналов.
+- [x] Оценивать simultaneous и temporal masking.
+- [x] Ослаблять peak shaving, когда residual выходит выше masking threshold.
+- [x] Оставить консервативные ограничения для tonal и side-channel материала.
+
+Результат: 16 ERB-spaced полос анализируют source и residual после
+антиалиасингового усреднения 8× потока. Раздельные attack/release envelopes
+моделируют simultaneous и forward masking. Noise-to-mask feedback непрерывно
+управляет глубиной shaver; tonal concentration и side-energy дополнительно
+уменьшают разрешённую нелинейность.
+
+### Уточнение true-peak ceiling
+
+Постоянный reconstruction margin заменён отдельным 8× true-peak guard после
+downsampling. Основной limiter теперь использует ceiling −0.1 dB, а guard с
+2 ms look-ahead компенсирует только фактический inter-sample overshoot.
+Стресс-тест достигает −0.101 dBTP вместо прежних приблизительно −0.5 dB,
+сохраняя true-peak guarantee. Дополнительная latency сообщается DAW.
 
 ## Стадия 6 — валидация и продуктовые режимы
 
@@ -59,4 +94,3 @@
 - [ ] Проверять overshoots после AAC/MP3 round-trip.
 - [ ] Провести слепое сравнение малых деградаций по принципам ITU-R BS.1116.
 - [ ] Зафиксировать режимы Transparent и High Quality и их CPU budgets.
-
