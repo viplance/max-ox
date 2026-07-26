@@ -1,0 +1,14 @@
+{
+  "name": "max-ox",
+  "version": "1.0.0",
+  "description": "A transparent VST3 maximizer plugin for macOS with analog-style UI, adaptive low-frequency management, and look-ahead limiting.",
+  "scripts": {
+    "fetch-juce": "mkdir -p vendor && if [ ! -d vendor/JUCE ]; then if [ -d ../CanaryVoiceTune/vendor/JUCE ]; then cp -R ../CanaryVoiceTune/vendor/JUCE vendor/JUCE; else echo '>>> Downloading JUCE (develop)...' && curl -L https://github.com/juce-framework/JUCE/archive/refs/heads/develop.zip -o vendor/juce.zip && unzip -q vendor/juce.zip -d vendor && mv vendor/JUCE-develop vendor/JUCE && rm vendor/juce.zip && echo '>>> JUCE downloaded.'; fi; fi",
+    "build": "pnpm run fetch-juce && mkdir -p build && cd build && cmake .. && cmake --build . --config Release 2>&1",
+    "clean": "rm -rf build",
+    "clean:all": "rm -rf build vendor",
+    "clean:reaper": "rm ~/Library/Application\\ Support/REAPER/reaper-vstplugins_arm64.ini"
+  },
+  "author": "Dzmitry Sharko",
+  "license": "GPL-3.0-or-later"
+}
