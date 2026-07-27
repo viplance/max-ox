@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include <cmath>
+#include <cstdint>
 
 MaxOxAudioProcessorEditor::MaxOxAudioProcessorEditor(MaxOxAudioProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p)
@@ -21,7 +22,7 @@ MaxOxAudioProcessorEditor::MaxOxAudioProcessorEditor(MaxOxAudioProcessor& p)
     addAndMakeVisible(outputMeter);
     addAndMakeVisible(grMeter);
 
-    setSize(680, 380);
+    setSize(680, 410);
     startTimerHz(30);
 }
 
@@ -56,7 +57,7 @@ void MaxOxAudioProcessorEditor::paint(juce::Graphics& g)
     drawLabel("INPUT", inputMeter.getBounds().withY(inputMeter.getY() - 18).withHeight(14), dimCream, 10.0f);
     drawLabel("OUTPUT", outputMeter.getBounds().withY(outputMeter.getY() - 18).withHeight(14), dimCream, 10.0f);
     drawLabel("LIMITING", grMeter.getBounds().withY(grMeter.getY() - 18).withHeight(14), dimCream, 10.0f);
-    drawLabel("GAIN", gainSlider.getBounds().withY(gainSlider.getY() - 20).withHeight(16), cream, 12.0f);
+    drawLabel("GAIN", gainSlider.getBounds().withY(gainSlider.getY() + 5).withHeight(16), cream, 12.0f);
 
     auto lcBounds = juce::Rectangle<float>(
         (float)gainSlider.getX() + (float)gainSlider.getWidth() * 0.5f - 30.0f,
@@ -70,7 +71,6 @@ void MaxOxAudioProcessorEditor::paint(juce::Graphics& g)
         juce::Rectangle<int>(12, getHeight() - 24, 180, 16), juce::Justification::centredLeft);
 
     drawScrews(g, bounds);
-    drawVentSlots(g, bounds);
 }
 
 void MaxOxAudioProcessorEditor::resized()
@@ -84,8 +84,8 @@ void MaxOxAudioProcessorEditor::resized()
     grMeter.setBounds(cx - meterW / 2, meterY, meterW, meterH);
     outputMeter.setBounds(getWidth() - meterW - 30, meterY, meterW, meterH);
 
-    const int knobSize = 140;
-    gainSlider.setBounds(cx - knobSize / 2, 210, knobSize, knobSize);
+    const int knobSize = 190;
+    gainSlider.setBounds(cx - knobSize / 2, 185, knobSize, knobSize);
 }
 
 void MaxOxAudioProcessorEditor::timerCallback()
@@ -104,28 +104,69 @@ void MaxOxAudioProcessorEditor::timerCallback()
 void MaxOxAudioProcessorEditor::drawChassis(juce::Graphics& g, juce::Rectangle<float> bounds)
 {
     juce::ColourGradient chassisGrad(
-        juce::Colour::fromRGB(55, 52, 48), bounds.getCentreX(), bounds.getY(),
-        juce::Colour::fromRGB(35, 33, 30), bounds.getCentreX(), bounds.getBottom(), false);
+        juce::Colour::fromRGB(118, 22, 39), bounds.getCentreX(), bounds.getY(),
+        juce::Colour::fromRGB(55, 6, 19), bounds.getCentreX(), bounds.getBottom(), false);
+    chassisGrad.addColour(0.38, juce::Colour::fromRGB(96, 14, 32));
+    chassisGrad.addColour(0.72, juce::Colour::fromRGB(73, 9, 25));
     g.setGradientFill(chassisGrad);
     g.fillAll();
 
-    g.setColour(juce::Colour::fromRGB(70, 65, 58).withAlpha(0.15f));
-    for (float yy = 0; yy < bounds.getHeight(); yy += 2.0f)
-        g.drawHorizontalLine((int)yy, bounds.getX(), bounds.getRight());
+    // A broad reflection gives the flat colour the curved response of coated metal.
+    juce::ColourGradient reflection(
+        juce::Colour::fromRGB(24, 2, 9).withAlpha(0.17f),
+        bounds.getX(), bounds.getCentreY(),
+        juce::Colour::fromRGB(25, 2, 9).withAlpha(0.20f),
+        bounds.getRight(), bounds.getCentreY(), false);
+    reflection.addColour(
+        0.22, juce::Colour::fromRGB(185, 75, 88).withAlpha(0.045f));
+    reflection.addColour(
+        0.48, juce::Colour::fromRGB(220, 112, 120).withAlpha(0.13f));
+    reflection.addColour(
+        0.68, juce::Colour::fromRGB(151, 48, 65).withAlpha(0.035f));
+    g.setGradientFill(reflection);
+    g.fillRect(bounds);
 
-    g.setColour(juce::Colour::fromRGB(80, 75, 65).withAlpha(0.4f));
+    // Fine deterministic grain: bright and dark hairlines simulate brushed steel.
+    const int top = (int) bounds.getY();
+    const int bottom = (int) bounds.getBottom();
+    const int left = (int) bounds.getX();
+    const int width = (int) bounds.getWidth();
+    for (int y = top; y < bottom; ++y) {
+        std::uint32_t hash =
+            (std::uint32_t) (y + 1) * 747796405u + 2891336453u;
+        hash = ((hash >> ((hash >> 28u) + 4u)) ^ hash) * 277803737u;
+        hash = (hash >> 22u) ^ hash;
+
+        const float grain =
+            (float) (hash & 0xffu) / 255.0f * 2.0f - 1.0f;
+        if (grain >= 0.0f)
+            g.setColour(
+                juce::Colour::fromRGB(232, 144, 148)
+                    .withAlpha(0.012f + grain * 0.038f));
+        else
+            g.setColour(
+                juce::Colour::fromRGB(25, 2, 9)
+                    .withAlpha(0.012f - grain * 0.040f));
+        g.drawHorizontalLine(y, bounds.getX(), bounds.getRight());
+
+        // Occasional short strokes break up perfect banding without visual noise.
+        if ((hash & 0x0fu) == 0u) {
+            const float x =
+                (float) left + (float) ((hash >> 8u) % (std::uint32_t) width);
+            const float length =
+                24.0f + (float) ((hash >> 17u) & 0x7fu);
+            g.setColour(
+                juce::Colour::fromRGB(238, 158, 160).withAlpha(0.075f));
+            g.drawHorizontalLine(
+                y, x, juce::jmin(bounds.getRight(), x + length));
+        }
+    }
+
+    g.setColour(juce::Colour::fromRGB(185, 74, 87).withAlpha(0.45f));
     g.drawLine(bounds.getX(), 0.5f, bounds.getRight(), 0.5f, 1.0f);
-    g.setColour(juce::Colour::fromRGB(20, 18, 16).withAlpha(0.6f));
+    g.setColour(juce::Colour::fromRGB(31, 3, 10).withAlpha(0.75f));
     g.drawLine(bounds.getX(), bounds.getBottom() - 0.5f, bounds.getRight(), bounds.getBottom() - 0.5f, 1.0f);
 
-    float panelY = 64.0f;
-    float panelH = 135.0f;
-    auto panelBounds = juce::Rectangle<float>(20.0f, panelY, bounds.getWidth() - 40.0f, panelH);
-
-    g.setColour(juce::Colour::fromRGB(25, 23, 20).withAlpha(0.4f));
-    g.fillRoundedRectangle(panelBounds, 4.0f);
-    g.setColour(juce::Colour::fromRGB(80, 75, 65).withAlpha(0.25f));
-    g.drawRoundedRectangle(panelBounds, 4.0f, 0.5f);
 }
 
 void MaxOxAudioProcessorEditor::drawScrews(juce::Graphics& g, juce::Rectangle<float> bounds)
@@ -151,26 +192,6 @@ void MaxOxAudioProcessorEditor::drawScrews(juce::Graphics& g, juce::Rectangle<fl
     drawScrew(bounds.getRight() - margin, margin);
     drawScrew(margin, bounds.getBottom() - margin);
     drawScrew(bounds.getRight() - margin, bounds.getBottom() - margin);
-}
-
-void MaxOxAudioProcessorEditor::drawVentSlots(juce::Graphics& g, juce::Rectangle<float> bounds)
-{
-    float slotY = bounds.getBottom() - 36.0f;
-    float slotWidth = 30.0f;
-    float slotHeight = 3.0f;
-    float spacing = 6.0f;
-    int numSlots = 5;
-
-    float totalW = (float)numSlots * slotWidth + (float)(numSlots - 1) * spacing;
-    float startX = bounds.getCentreX() - totalW * 0.5f;
-
-    for (int i = 0; i < numSlots; ++i) {
-        float sx = startX + (float)i * (slotWidth + spacing);
-        g.setColour(juce::Colour::fromRGB(15, 14, 12).withAlpha(0.6f));
-        g.fillRoundedRectangle(sx, slotY, slotWidth, slotHeight, 1.5f);
-        g.setColour(juce::Colour::fromRGB(70, 65, 58).withAlpha(0.2f));
-        g.drawRoundedRectangle(sx, slotY, slotWidth, slotHeight, 1.5f, 0.5f);
-    }
 }
 
 void MaxOxAudioProcessorEditor::drawLowCutIndicator(juce::Graphics& g, juce::Rectangle<float> bounds, float act)

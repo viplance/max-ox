@@ -19,7 +19,6 @@ private:
     void timerCallback() override;
     void drawChassis(juce::Graphics& g, juce::Rectangle<float> bounds);
     void drawScrews(juce::Graphics& g, juce::Rectangle<float> bounds);
-    void drawVentSlots(juce::Graphics& g, juce::Rectangle<float> bounds);
     void drawLowCutIndicator(juce::Graphics& g, juce::Rectangle<float> bounds, float activity);
 
     MaxOxAudioProcessor& audioProcessor;
