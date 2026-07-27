@@ -2,6 +2,34 @@
 #include <cmath>
 #include <cstdint>
 
+void DonateHyperlinkButton::paintButton(
+    juce::Graphics& g, bool isMouseOverButton, bool isButtonDown)
+{
+    auto colour = findColour(juce::HyperlinkButton::textColourId);
+    if (isMouseOverButton)
+        colour = colour.darker(isButtonDown ? 1.3f : 0.4f);
+    else if (!isEnabled())
+        colour = colour.withMultipliedAlpha(0.4f);
+
+    const auto font = juce::Font(juce::FontOptions(13.0f));
+    const auto textBounds = getLocalBounds().reduced(1, 0);
+    const auto textWidth =
+        juce::GlyphArrangement::getStringWidthInt(font, getButtonText());
+
+    g.setColour(colour);
+    g.setFont(font);
+    g.drawText(
+        getButtonText(), textBounds,
+        juce::Justification::centredLeft | juce::Justification::verticallyCentred,
+        true);
+
+    const float underlineY = (float)getHeight() - 1.5f;
+    g.drawLine(
+        (float)textBounds.getX(), underlineY,
+        (float)(textBounds.getX() + textWidth), underlineY,
+        1.0f);
+}
+
 MaxOxAudioProcessorEditor::MaxOxAudioProcessorEditor(MaxOxAudioProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p)
 {
@@ -13,6 +41,17 @@ MaxOxAudioProcessorEditor::MaxOxAudioProcessorEditor(MaxOxAudioProcessor& p)
         juce::MathConstants<float>::pi * 1.25f,
         juce::MathConstants<float>::pi * 2.75f, true);
     gainSlider.setLookAndFeel(&knobLookAndFeel);
+    gainSlider.setMouseCursor(juce::MouseCursor::PointingHandCursor);
+
+    donateLink.setFont(
+        juce::Font(juce::FontOptions(13.0f)),
+        false,
+        juce::Justification::centredLeft);
+    donateLink.setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    donateLink.setColour(
+        juce::HyperlinkButton::textColourId,
+        juce::Colour::fromRGB(225, 215, 195).withAlpha(0.78f));
+    addAndMakeVisible(donateLink);
 
     gainAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         audioProcessor.apvts, "GAIN", gainSlider);
@@ -48,16 +87,16 @@ void MaxOxAudioProcessorEditor::paint(juce::Graphics& g)
     auto cream = juce::Colour::fromRGB(225, 215, 195);
     auto dimCream = cream.withAlpha(0.65f);
 
-    drawLabel("M A X O X", { 0, 18, getWidth(), 32 }, cream, 22.0f);
+    drawLabel("M A X O X", { 0, 18, getWidth(), 32 }, cream, 24.0f);
 
-    g.setFont(juce::Font(juce::FontOptions(10.0f)));
+    g.setFont(juce::Font(juce::FontOptions(13.0f)));
     g.setColour(dimCream.withAlpha(0.5f));
-    g.drawText("v" PLUGIN_VERSION, juce::Rectangle<int>(getWidth() - 80, 18, 70, 16), juce::Justification::centredRight);
+    g.drawText("v" PLUGIN_VERSION, juce::Rectangle<int>(getWidth() - 90, 17, 80, 19), juce::Justification::centredRight);
 
-    drawLabel("INPUT", inputMeter.getBounds().withY(inputMeter.getY() - 18).withHeight(14), dimCream, 10.0f);
-    drawLabel("OUTPUT", outputMeter.getBounds().withY(outputMeter.getY() - 18).withHeight(14), dimCream, 10.0f);
-    drawLabel("LIMITING", grMeter.getBounds().withY(grMeter.getY() - 18).withHeight(14), dimCream, 10.0f);
-    drawLabel("GAIN", gainSlider.getBounds().withY(gainSlider.getY() + 5).withHeight(16), cream, 12.0f);
+    drawLabel("INPUT", inputMeter.getBounds().withY(inputMeter.getY() - 19).withHeight(15), dimCream, 12.0f);
+    drawLabel("OUTPUT", outputMeter.getBounds().withY(outputMeter.getY() - 19).withHeight(15), dimCream, 12.0f);
+    drawLabel("LIMITING", grMeter.getBounds().withY(grMeter.getY() - 19).withHeight(15), dimCream, 12.0f);
+    drawLabel("GAIN", gainSlider.getBounds().withY(gainSlider.getY() + 4).withHeight(18), cream, 14.0f);
 
     auto lcBounds = juce::Rectangle<float>(
         (float)gainSlider.getX() + (float)gainSlider.getWidth() * 0.5f - 30.0f,
@@ -65,10 +104,10 @@ void MaxOxAudioProcessorEditor::paint(juce::Graphics& g)
         60.0f, 12.0f);
     drawLowCutIndicator(g, lcBounds, lowCutActivity);
 
-    g.setFont(juce::Font(juce::FontOptions(9.0f)));
+    g.setFont(juce::Font(juce::FontOptions(12.0f)));
     g.setColour(dimCream.withAlpha(0.40f));
     g.drawText("by DJ Sher from Enotix",
-        juce::Rectangle<int>(12, getHeight() - 24, 180, 16), juce::Justification::centredLeft);
+        juce::Rectangle<int>(12, getHeight() - 27, 210, 19), juce::Justification::centredLeft);
 
     drawScrews(g, bounds);
 }
@@ -83,6 +122,8 @@ void MaxOxAudioProcessorEditor::resized()
     inputMeter.setBounds(30, meterY, meterW, meterH);
     grMeter.setBounds(cx - meterW / 2, meterY, meterW, meterH);
     outputMeter.setBounds(getWidth() - meterW - 30, meterY, meterW, meterH);
+
+    donateLink.setBounds(24, 17, 110, 20);
 
     const int knobSize = 190;
     gainSlider.setBounds(cx - knobSize / 2, 185, knobSize, knobSize);
@@ -208,7 +249,7 @@ void MaxOxAudioProcessorEditor::drawLowCutIndicator(juce::Graphics& g, juce::Rec
     g.setColour(color.withAlpha(alpha));
     g.fillRoundedRectangle(bounds, 2.0f);
 
-    g.setFont(juce::Font(juce::FontOptions(8.0f)));
+    g.setFont(juce::Font(juce::FontOptions(9.0f)));
     g.setColour(juce::Colour::fromRGB(20, 18, 16));
     g.drawText("LF CUT", bounds, juce::Justification::centred);
 }

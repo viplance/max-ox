@@ -8,6 +8,13 @@ AnalogKnobLookAndFeel::AnalogKnobLookAndFeel()
     setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
 }
 
+juce::Label* AnalogKnobLookAndFeel::createSliderTextBox(juce::Slider& slider)
+{
+    auto* textBox = juce::LookAndFeel_V4::createSliderTextBox(slider);
+    textBox->setMouseCursor(juce::MouseCursor::IBeamCursor);
+    return textBox;
+}
+
 void AnalogKnobLookAndFeel::drawRotarySlider(
     juce::Graphics& g, int x, int y, int width, int height,
     float sliderPos, float rotaryStartAngle, float rotaryEndAngle,
@@ -89,7 +96,7 @@ void AnalogKnobLookAndFeel::drawRotarySlider(
             auto labelBounds = juce::Rectangle<float>(
                 labelPt.x - 16.0f, labelPt.y - 6.0f, 32.0f, 12.0f);
 
-            g.setFont(juce::Font(juce::FontOptions(10.0f)));
+            g.setFont(juce::Font(juce::FontOptions(11.0f)));
             g.setColour(juce::Colour::fromRGB(200, 190, 170).withAlpha(0.85f));
             g.drawText(juce::String((int)dbVal),
                 labelBounds,

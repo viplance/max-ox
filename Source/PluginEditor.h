@@ -5,6 +5,14 @@
 #include "UI/AnalogKnob.h"
 #include <JuceHeader.h>
 
+class DonateHyperlinkButton final : public juce::HyperlinkButton
+{
+public:
+    using juce::HyperlinkButton::HyperlinkButton;
+
+    void paintButton(juce::Graphics&, bool isMouseOverButton, bool isButtonDown) override;
+};
+
 class MaxOxAudioProcessorEditor : public juce::AudioProcessorEditor,
                                   private juce::Timer
 {
@@ -24,6 +32,10 @@ private:
     MaxOxAudioProcessor& audioProcessor;
     AnalogKnobLookAndFeel knobLookAndFeel;
 
+    DonateHyperlinkButton donateLink {
+        "Donate to us",
+        juce::URL("https://destream.net/live/DjSher/donate")
+    };
     juce::Slider gainSlider;
     NeedleMeter inputMeter { NeedleMeter::MeterType::Level };
     NeedleMeter outputMeter { NeedleMeter::MeterType::Level };
