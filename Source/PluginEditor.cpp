@@ -2,6 +2,136 @@
 #include <cmath>
 #include <cstdint>
 
+namespace
+{
+constexpr auto kSupportPromptStateKey = "supportPromptSchedule";
+constexpr auto kSupportPromptStateVersion = "2";
+constexpr auto kSupportPromptIntegritySalt =
+    "MaxOx.SupportPrompt.2026.7.SharkoAudio";
+}
+
+class SupportPromptState
+{
+public:
+    SupportPromptState()
+    {
+        juce::PropertiesFile::Options options;
+        options.applicationName = "MaxOx";
+        options.filenameSuffix = "support";
+        options.folderName = "SharkoAudio";
+        options.osxLibrarySubFolder = "Application Support";
+        options.millisecondsBeforeSaving = 0;
+        options.storageFormat = juce::PropertiesFile::storeAsCompressedBinary;
+
+        properties = std::make_unique<juce::PropertiesFile>(options);
+
+        const auto now = juce::Time::currentTimeMillis();
+        if (!load()) {
+            nextPromptAtMs = now + MaxOxConfig::kInitialSupportPromptDelayMs;
+            repeatDelayMs = MaxOxConfig::kInitialSupportPromptDelayMs;
+            save();
+        }
+    }
+
+    bool isDue(std::int64_t now) const noexcept
+    {
+        return now >= nextPromptAtMs;
+    }
+
+    void markPromptShown(std::int64_t now)
+    {
+        nextPromptAtMs = now + repeatDelayMs;
+        save();
+    }
+
+    void shortenRemainingTimeOnClose(std::int64_t now)
+    {
+        repeatDelayMs = juce::jmax(
+            MaxOxConfig::kMinimumSupportPromptDelayMs,
+            repeatDelayMs / MaxOxConfig::kSupportPromptCloseDivisor);
+
+        const auto remainingMs = nextPromptAtMs - now;
+        nextPromptAtMs = now + juce::jmax(
+            MaxOxConfig::kMinimumSupportPromptDelayMs,
+            remainingMs > 0
+                ? remainingMs / MaxOxConfig::kSupportPromptCloseDivisor
+                : repeatDelayMs);
+        save();
+    }
+
+private:
+    static juce::String createSignature(const juce::String& payload)
+    {
+        const auto signedPayload = payload + kSupportPromptIntegritySalt;
+        return juce::SHA256(signedPayload.toUTF8()).toHexString();
+    }
+
+    bool load()
+    {
+        if (properties == nullptr || !properties->isValidFile())
+            return false;
+
+        const auto encoded = properties->getValue(kSupportPromptStateKey);
+        if (encoded.isEmpty())
+            return false;
+
+        juce::MemoryBlock bytes;
+        if (!bytes.fromBase64Encoding(encoded))
+            return false;
+
+        const auto stored = juce::String::fromUTF8(
+            static_cast<const char*>(bytes.getData()),
+            static_cast<int>(bytes.getSize()));
+        const auto signatureSeparator = stored.lastIndexOfChar('|');
+        if (signatureSeparator <= 0)
+            return false;
+
+        const auto payload = stored.substring(0, signatureSeparator);
+        const auto signature = stored.substring(signatureSeparator + 1);
+        if (signature != createSignature(payload))
+            return false;
+
+        juce::StringArray fields;
+        fields.addTokens(payload, "|", {});
+        if (fields.size() != 3 || fields[2] != kSupportPromptStateVersion)
+            return false;
+
+        const auto loadedNextPromptAtMs = fields[0].getLargeIntValue();
+        const auto loadedRepeatDelayMs = fields[1].getLargeIntValue();
+        if (loadedNextPromptAtMs <= 0
+            || loadedRepeatDelayMs < MaxOxConfig::kMinimumSupportPromptDelayMs
+            || loadedRepeatDelayMs > MaxOxConfig::kInitialSupportPromptDelayMs)
+            return false;
+
+        nextPromptAtMs = loadedNextPromptAtMs;
+        repeatDelayMs = loadedRepeatDelayMs;
+        return true;
+    }
+
+    void save()
+    {
+        if (properties == nullptr || !properties->isValidFile())
+            return;
+
+        const auto payload =
+            juce::String(nextPromptAtMs) + "|"
+            + juce::String(repeatDelayMs) + "|"
+            + kSupportPromptStateVersion;
+        const auto stored = payload + "|" + createSignature(payload);
+        const juce::MemoryBlock bytes(
+            stored.toRawUTF8(), stored.getNumBytesAsUTF8());
+
+        properties->setValue(
+            kSupportPromptStateKey, bytes.toBase64Encoding());
+        properties->saveIfNeeded();
+    }
+
+    std::unique_ptr<juce::PropertiesFile> properties;
+    std::int64_t nextPromptAtMs = 0;
+    std::int64_t repeatDelayMs =
+        MaxOxConfig::kInitialSupportPromptDelayMs;
+};
+
 void DonateHyperlinkButton::paintButton(
     juce::Graphics& g, bool isMouseOverButton, bool isButtonDown)
 {
@@ -30,13 +160,125 @@ void DonateHyperlinkButton::paintButton(
         1.0f);
 }
 
+PopupCloseButton::PopupCloseButton()
+    : juce::Button("Close support prompt")
+{
+    setMouseCursor(juce::MouseCursor::PointingHandCursor);
+}
+
+void PopupCloseButton::paintButton(
+    juce::Graphics& g, bool isMouseOverButton, bool isButtonDown)
+{
+    auto colour = juce::Colour::fromRGB(115, 108, 104);
+    if (isMouseOverButton)
+        colour = colour.brighter(isButtonDown ? 0.05f : 0.25f);
+
+    const auto bounds = getLocalBounds().toFloat().reduced(6.0f);
+    g.setColour(colour);
+    g.drawLine(
+        juce::Line<float>(bounds.getTopLeft(), bounds.getBottomRight()),
+        2.0f);
+    g.drawLine(
+        juce::Line<float>(bounds.getTopRight(), bounds.getBottomLeft()),
+        2.0f);
+}
+
+SupportPromptComponent::SupportPromptComponent()
+{
+    setInterceptsMouseClicks(true, true);
+
+    message.setText(
+        "Do you like the MaxOx plugin?\nSupport the developer!",
+        juce::dontSendNotification);
+    message.setFont(juce::Font(juce::FontOptions(20.0f)));
+    message.setColour(
+        juce::Label::textColourId, juce::Colour::fromRGB(55, 20, 28));
+    message.setJustificationType(juce::Justification::centred);
+    addAndMakeVisible(message);
+
+    donateButton.setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    donateButton.setColour(
+        juce::TextButton::buttonColourId,
+        juce::Colour::fromRGB(150, 28, 48));
+    donateButton.setColour(
+        juce::TextButton::buttonOnColourId,
+        juce::Colour::fromRGB(178, 38, 59));
+    donateButton.setColour(
+        juce::TextButton::textColourOffId,
+        juce::Colour::fromRGB(245, 238, 220));
+    donateButton.setColour(
+        juce::TextButton::textColourOnId,
+        juce::Colours::white);
+    donateButton.onClick = [this] {
+        juce::URL(MaxOxConfig::kDonateUrl).launchInDefaultBrowser();
+        dismiss();
+    };
+    addAndMakeVisible(donateButton);
+
+    closeButton.onClick = [this] { dismiss(); };
+    addAndMakeVisible(closeButton);
+}
+
+juce::Rectangle<int> SupportPromptComponent::getCardBounds() const
+{
+    return getLocalBounds().withSizeKeepingCentre(420, 174);
+}
+
+void SupportPromptComponent::paint(juce::Graphics& g)
+{
+    g.setColour(juce::Colours::black.withAlpha(0.52f));
+    g.fillAll();
+
+    auto card = getCardBounds().toFloat();
+    g.setColour(juce::Colours::black.withAlpha(0.28f));
+    g.fillRoundedRectangle(card.translated(0.0f, 4.0f), 10.0f);
+
+    juce::ColourGradient background(
+        juce::Colour::fromRGB(245, 238, 220),
+        card.getCentreX(), card.getY(),
+        juce::Colour::fromRGB(225, 215, 195),
+        card.getCentreX(), card.getBottom(), false);
+    g.setGradientFill(background);
+    g.fillRoundedRectangle(card, 10.0f);
+
+    g.setColour(juce::Colour::fromRGB(118, 22, 39).withAlpha(0.7f));
+    g.drawRoundedRectangle(card.reduced(0.5f), 10.0f, 1.0f);
+}
+
+void SupportPromptComponent::resized()
+{
+    const auto card = getCardBounds();
+    message.setBounds(card.getX() + 28, card.getY() + 22,
+                      card.getWidth() - 56, 66);
+    donateButton.setBounds(card.getCentreX() - 66, card.getY() + 108,
+                           132, 34);
+    closeButton.setBounds(card.getRight() - 37, card.getY() + 9, 28, 28);
+}
+
+void SupportPromptComponent::mouseDown(const juce::MouseEvent& event)
+{
+    if (!getCardBounds().contains(event.getPosition()))
+        dismiss();
+}
+
+void SupportPromptComponent::dismiss()
+{
+    if (!isVisible())
+        return;
+
+    setVisible(false);
+    if (onDismiss)
+        onDismiss();
+}
+
 MaxOxAudioProcessorEditor::MaxOxAudioProcessorEditor(MaxOxAudioProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p)
 {
+    supportPromptState = std::make_unique<SupportPromptState>();
+
     gainSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
     gainSlider.setRange(0.0, 24.0, 0.1);
-    gainSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 64, 22);
-    gainSlider.setTextValueSuffix(" dB");
+    gainSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
     gainSlider.setRotaryParameters(
         juce::MathConstants<float>::pi * 1.25f,
         juce::MathConstants<float>::pi * 2.75f, true);
@@ -60,6 +302,12 @@ MaxOxAudioProcessorEditor::MaxOxAudioProcessorEditor(MaxOxAudioProcessor& p)
     addAndMakeVisible(inputMeter);
     addAndMakeVisible(outputMeter);
     addAndMakeVisible(grMeter);
+    addChildComponent(supportPrompt);
+    supportPrompt.onDismiss = [this] {
+        if (supportPromptState != nullptr)
+            supportPromptState->shortenRemainingTimeOnClose(
+                juce::Time::currentTimeMillis());
+    };
 
     setSize(680, 410);
     startTimerHz(30);
@@ -67,6 +315,12 @@ MaxOxAudioProcessorEditor::MaxOxAudioProcessorEditor(MaxOxAudioProcessor& p)
 
 MaxOxAudioProcessorEditor::~MaxOxAudioProcessorEditor()
 {
+    stopTimer();
+
+    if (supportPromptState != nullptr)
+        supportPromptState->shortenRemainingTimeOnClose(
+            juce::Time::currentTimeMillis());
+
     gainSlider.setLookAndFeel(nullptr);
 }
 
@@ -91,23 +345,17 @@ void MaxOxAudioProcessorEditor::paint(juce::Graphics& g)
 
     g.setFont(juce::Font(juce::FontOptions(13.0f)));
     g.setColour(dimCream.withAlpha(0.5f));
-    g.drawText("v" PLUGIN_VERSION, juce::Rectangle<int>(getWidth() - 90, 17, 80, 19), juce::Justification::centredRight);
+    g.drawText("v" PLUGIN_VERSION, juce::Rectangle<int>(getWidth() - 100, 17, 80, 19), juce::Justification::centredRight);
 
     drawLabel("INPUT", inputMeter.getBounds().withY(inputMeter.getY() - 19).withHeight(15), dimCream, 12.0f);
     drawLabel("OUTPUT", outputMeter.getBounds().withY(outputMeter.getY() - 19).withHeight(15), dimCream, 12.0f);
     drawLabel("LIMITING", grMeter.getBounds().withY(grMeter.getY() - 19).withHeight(15), dimCream, 12.0f);
     drawLabel("GAIN", gainSlider.getBounds().withY(gainSlider.getY() + 4).withHeight(18), cream, 14.0f);
 
-    auto lcBounds = juce::Rectangle<float>(
-        (float)gainSlider.getX() + (float)gainSlider.getWidth() * 0.5f - 30.0f,
-        (float)gainSlider.getBottom() + 24.0f,
-        60.0f, 12.0f);
-    drawLowCutIndicator(g, lcBounds, lowCutActivity);
-
     g.setFont(juce::Font(juce::FontOptions(12.0f)));
     g.setColour(dimCream.withAlpha(0.40f));
     g.drawText("by DJ Sher from Enotix",
-        juce::Rectangle<int>(12, getHeight() - 27, 210, 19), juce::Justification::centredLeft);
+        juce::Rectangle<int>(20, getHeight() - 27, 210, 19), juce::Justification::centredLeft);
 
     drawScrews(g, bounds);
 }
@@ -117,16 +365,20 @@ void MaxOxAudioProcessorEditor::resized()
     const int cx = getWidth() / 2;
     const int meterW = 160;
     const int meterH = 100;
-    const int meterY = 78;
+    const int verticalOffset = 14;
+    const int meterY = 78 + verticalOffset;
 
     inputMeter.setBounds(30, meterY, meterW, meterH);
     grMeter.setBounds(cx - meterW / 2, meterY, meterW, meterH);
     outputMeter.setBounds(getWidth() - meterW - 30, meterY, meterW, meterH);
 
-    donateLink.setBounds(24, 17, 110, 20);
+    donateLink.setBounds(32, 17, 110, 20);
+    supportPrompt.setBounds(getLocalBounds());
 
-    const int knobSize = 190;
-    gainSlider.setBounds(cx - knobSize / 2, 185, knobSize, knobSize);
+    const int knobWidth = 190;
+    const int knobHeight = 168;
+    gainSlider.setBounds(
+        cx - knobWidth / 2, 185 + verticalOffset, knobWidth, knobHeight);
 }
 
 void MaxOxAudioProcessorEditor::timerCallback()
@@ -135,10 +387,13 @@ void MaxOxAudioProcessorEditor::timerCallback()
     outputMeter.setLevelDb(audioProcessor.getOutputLevelDb());
     grMeter.setLevelDb(audioProcessor.getGainReductionDb());
 
-    float newActivity = audioProcessor.getLowCutActivity();
-    if (std::abs(newActivity - lowCutActivity) > 0.005f) {
-        lowCutActivity = newActivity;
-        repaint();
+    if (!supportPrompt.isVisible()
+        && supportPromptState != nullptr
+        && supportPromptState->isDue(juce::Time::currentTimeMillis())) {
+        supportPromptState->markPromptShown(
+            juce::Time::currentTimeMillis());
+        supportPrompt.setVisible(true);
+        supportPrompt.toFront(false);
     }
 }
 
@@ -233,23 +488,4 @@ void MaxOxAudioProcessorEditor::drawScrews(juce::Graphics& g, juce::Rectangle<fl
     drawScrew(bounds.getRight() - margin, margin);
     drawScrew(margin, bounds.getBottom() - margin);
     drawScrew(bounds.getRight() - margin, bounds.getBottom() - margin);
-}
-
-void MaxOxAudioProcessorEditor::drawLowCutIndicator(juce::Graphics& g, juce::Rectangle<float> bounds, float act)
-{
-    auto activeColor = juce::Colour::fromRGB(180, 140, 60);
-    auto dimColor = juce::Colour::fromRGB(80, 70, 55);
-
-    float alpha = 0.3f + act * 0.7f;
-    auto color = dimColor.interpolatedWith(activeColor, act);
-
-    g.setColour(color.withAlpha(alpha * 0.3f));
-    g.fillRoundedRectangle(bounds.expanded(2.0f), 3.0f);
-
-    g.setColour(color.withAlpha(alpha));
-    g.fillRoundedRectangle(bounds, 2.0f);
-
-    g.setFont(juce::Font(juce::FontOptions(9.0f)));
-    g.setColour(juce::Colour::fromRGB(20, 18, 16));
-    g.drawText("LF CUT", bounds, juce::Justification::centred);
 }

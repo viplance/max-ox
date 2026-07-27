@@ -29,6 +29,7 @@ juce_add_plugin(MaxOx
 target_sources(MaxOx PRIVATE
   Source/PluginProcessor.cpp
   Source/PluginProcessor.h
+  Source/PluginConstants.h
   Source/PluginEditor.cpp
   Source/PluginEditor.h
   Source/DSP/LookAheadLimiter.cpp
@@ -64,6 +65,7 @@ target_link_libraries(MaxOx PRIVATE
   juce::juce_events
   juce::juce_core
   juce::juce_data_structures
+  juce::juce_cryptography
   juce::juce_audio_basics
   juce::juce_audio_devices
   juce::juce_dsp
