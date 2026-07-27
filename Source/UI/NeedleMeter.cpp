@@ -15,7 +15,7 @@ void NeedleMeter::setLevelDb(float db)
     }
 
     const auto next = juce::jlimit(minDb, maxDb, db);
-    smoothedDb += 0.25f * (next - smoothedDb);
+    smoothedDb += kVisualSmoothing * (next - smoothedDb);
 
     if (std::abs(smoothedDb - levelDb) > 0.02f) {
         levelDb = smoothedDb;
@@ -120,8 +120,6 @@ void NeedleMeter::drawScaleMarks(juce::Graphics& g, juce::Point<float> pivot, fl
             { -6.0f, "-6", true },
             { -3.0f, "-3", true },
             { 0.0f, "0", true },
-            { 3.0f, "+3", true },
-            { 6.0f, "+6", true },
         };
 
         for (auto& m : marks) {

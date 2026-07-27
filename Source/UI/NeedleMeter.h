@@ -23,7 +23,8 @@ private:
     float smoothedDb = -48.0f;
 
     static constexpr float kMinDb = -48.0f;
-    static constexpr float kMaxDb = 6.0f;
+    static constexpr float kMaxDb = 0.0f;
+    static constexpr float kVisualSmoothing = 0.4375f;
     static constexpr float kGrMaxReductionDb = 12.0f;
     static constexpr float kNeedleAngleStart = -0.85f;
     static constexpr float kNeedleAngleEnd = 0.85f;

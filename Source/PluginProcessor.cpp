@@ -83,7 +83,8 @@ void MaxOxAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
     for (int ch = 0; ch < numChannels; ++ch)
         outputPeak = juce::jmax(outputPeak, buffer.getMagnitude(ch, 0, numSamples));
 
-    const float releaseCoeff = 1.0f - std::exp((float)-numSamples / (float)(currentSampleRate * 0.42));
+    const float releaseCoeff = 1.0f - std::exp(
+        (float) -numSamples / (float) (currentSampleRate * 0.21));
     updateMeter(inputLevelDb, inputPeak, releaseCoeff);
     updateMeter(outputLevelDb, outputPeak, releaseCoeff);
 }

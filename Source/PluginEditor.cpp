@@ -55,7 +55,7 @@ void MaxOxAudioProcessorEditor::paint(juce::Graphics& g)
 
     drawLabel("INPUT", inputMeter.getBounds().withY(inputMeter.getY() - 18).withHeight(14), dimCream, 10.0f);
     drawLabel("OUTPUT", outputMeter.getBounds().withY(outputMeter.getY() - 18).withHeight(14), dimCream, 10.0f);
-    drawLabel("GAIN", grMeter.getBounds().withY(grMeter.getY() - 18).withHeight(14), dimCream, 10.0f);
+    drawLabel("LIMITING", grMeter.getBounds().withY(grMeter.getY() - 18).withHeight(14), dimCream, 10.0f);
     drawLabel("GAIN", gainSlider.getBounds().withY(gainSlider.getY() - 20).withHeight(16), cream, 12.0f);
 
     auto lcBounds = juce::Rectangle<float>(
