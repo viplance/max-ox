@@ -39,14 +39,12 @@ void MaxOxAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     limiter.prepare(sampleRate, samplesPerBlock);
     setLatencySamples(limiter.getLatencySamples());
     adaptiveLowCut.prepare(sampleRate, samplesPerBlock);
-    phaseRotator.prepare(sampleRate, samplesPerBlock);
 }
 
 void MaxOxAudioProcessor::releaseResources()
 {
     limiter.reset();
     adaptiveLowCut.reset();
-    phaseRotator.reset();
 }
 
 bool MaxOxAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
@@ -79,7 +77,6 @@ void MaxOxAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::M
     auto* R = numChannels > 1 ? buffer.getWritePointer(1) : L;
     adaptiveLowCut.process(L, R, numSamples, juce::jmin(numChannels, 2));
 
-    phaseRotator.process(buffer);
     limiter.process(buffer);
 
     float outputPeak = 0.0f;

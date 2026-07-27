@@ -6,11 +6,9 @@ void LookAheadLimiter::prepare(double sampleRate, int maxBlockSize)
     currentSampleRate = sampleRate;
 
     lookAheadSamples = (int) std::ceil(sampleRate * kLookAheadMs / 1000.0);
-    lookAheadSamplesOversampled = lookAheadSamples * kOversampleFactor;
 
     for (auto& buf : delayBuffer) {
-        buf.resize((size_t) (lookAheadSamplesOversampled
-                             + maxBlockSize * kOversampleFactor + 1), 0.0f);
+        buf.resize((size_t) (lookAheadSamples + maxBlockSize + 1), 0.0f);
         std::fill(buf.begin(), buf.end(), 0.0f);
     }
     delayWritePos = 0;
@@ -34,15 +32,14 @@ void LookAheadLimiter::prepare(double sampleRate, int maxBlockSize)
     fastReleaseCoeff = timeConstant(kFastReleaseMs);
     slowReleaseCoeff = timeConstant(kSlowReleaseMs);
     rmsCoeff = timeConstant(kRmsWindowMs);
+    releaseCoeffSmoothing = timeConstant(15.0f);
+    smoothedReleaseCoeff = releaseCoeff;
+    maxReleasePerSample = juce::Decibels::decibelsToGain(
+        kMaxReleaseRateDbPerSec / (float) sampleRate);
 
-    oversampler.reset();
-    oversampler.initProcessing((size_t) maxBlockSize);
-    peakShaver.prepare(sampleRate, kOversampleFactor);
+    peakShaver.prepare(sampleRate, 1);
     truePeakGuard.prepare(sampleRate, maxBlockSize);
-    latencySamples =
-        lookAheadSamples
-        + (int) std::lround(oversampler.getLatencyInSamples())
-        + truePeakGuard.getLatencySamples();
+    latencySamples = lookAheadSamples + truePeakGuard.getLatencySamples();
 
     currentGain = 1.0f;
     rmsEnvelope = 0.0f;
@@ -59,7 +56,7 @@ void LookAheadLimiter::reset()
     lastScheduledTarget = 1.0f;
     currentGain = 1.0f;
     rmsEnvelope = 0.0f;
-    oversampler.reset();
+    smoothedReleaseCoeff = releaseCoeff;
     peakShaver.reset();
     truePeakGuard.reset();
     gainReductionDb.store(0.0f, std::memory_order_relaxed);
@@ -67,16 +64,14 @@ void LookAheadLimiter::reset()
 
 float LookAheadLimiter::computeGain(float peakDb) const
 {
-    constexpr float limiterCeilingDb = kCeilingDb - kReconstructionMarginDb;
-
-    if (peakDb <= limiterCeilingDb - kKneeDb * 0.5f)
+    if (peakDb <= kCeilingDb - kKneeDb * 0.5f)
         return 1.0f;
 
     float reductionDb;
-    if (peakDb >= limiterCeilingDb + kKneeDb * 0.5f) {
-        reductionDb = limiterCeilingDb - peakDb;
+    if (peakDb >= kCeilingDb + kKneeDb * 0.5f) {
+        reductionDb = kCeilingDb - peakDb;
     } else {
-        float delta = peakDb - (limiterCeilingDb - kKneeDb * 0.5f);
+        float delta = peakDb - (kCeilingDb - kKneeDb * 0.5f);
         reductionDb = -delta * delta / (2.0f * kKneeDb);
     }
 
@@ -91,12 +86,9 @@ void LookAheadLimiter::process(juce::AudioBuffer<float>& buffer)
     if (numSamples == 0 || delayBuffer[0].empty())
         return;
 
-    auto outputBlock = juce::dsp::AudioBlock<float>(buffer);
-    auto oversampledBlock =
-        oversampler.processSamplesUp(juce::dsp::AudioBlock<const float>(buffer));
-    peakShaver.process(oversampledBlock, numChannels);
-    const int oversampledSamples = (int) oversampledBlock.getNumSamples();
-    const int oversamplingFactor = oversampledSamples / numSamples;
+    auto block = juce::dsp::AudioBlock<float>(buffer);
+    peakShaver.process(block, numChannels);
+
     const auto bufSize = (int) delayBuffer[0].size();
     float maxGr = 1.0f;
 
@@ -104,16 +96,14 @@ void LookAheadLimiter::process(juce::AudioBuffer<float>& buffer)
         float peak = 0.0f;
         float meanSquare = 0.0f;
 
-        for (int os = 0; os < oversamplingFactor; ++os) {
-            const int sampleIndex = i * oversamplingFactor + os;
-            for (int ch = 0; ch < numChannels; ++ch) {
-                const float sample =
-                    oversampledBlock.getSample((size_t) ch, (size_t) sampleIndex);
-                peak = juce::jmax(peak, std::abs(sample));
-                meanSquare += sample * sample;
-            }
+        for (int ch = 0; ch < numChannels; ++ch) {
+            const float sample = buffer.getSample(ch, i);
+            delayBuffer[(size_t) ch][(size_t) delayWritePos] = sample;
+            const float mag = std::abs(sample);
+            peak = juce::jmax(peak, mag);
+            meanSquare += sample * sample;
         }
-        meanSquare /= (float) (numChannels * oversamplingFactor);
+        meanSquare /= (float) numChannels;
         rmsEnvelope = rmsCoeff * rmsEnvelope + (1.0f - rmsCoeff) * meanSquare;
 
         float peakDb = juce::Decibels::gainToDecibels(peak, -96.0f);
@@ -154,49 +144,44 @@ void LookAheadLimiter::process(juce::AudioBuffer<float>& buffer)
         } else {
             const float rms = std::sqrt(rmsEnvelope + 1.0e-12f);
             const float crestFactor = peak / (rms + 1.0e-12f);
-            float adaptiveRelease = releaseCoeff;
+            float targetRelease = releaseCoeff;
             if (crestFactor <= 2.5f) {
                 const float amount =
                     juce::jlimit(0.0f, 1.0f, (crestFactor - 1.5f) / 1.0f);
-                adaptiveRelease =
+                targetRelease =
                     slowReleaseCoeff
                     + amount * (releaseCoeff - slowReleaseCoeff);
             } else {
                 const float amount =
                     juce::jlimit(0.0f, 1.0f, (crestFactor - 2.5f) / 1.5f);
-                adaptiveRelease =
+                targetRelease =
                     releaseCoeff
                     + amount * (fastReleaseCoeff - releaseCoeff);
             }
-            currentGain =
-                currentGain * adaptiveRelease
-                + scheduledGain * (1.0f - adaptiveRelease);
+            smoothedReleaseCoeff =
+                releaseCoeffSmoothing * smoothedReleaseCoeff
+                + (1.0f - releaseCoeffSmoothing) * targetRelease;
+            float newGain =
+                currentGain * smoothedReleaseCoeff
+                + scheduledGain * (1.0f - smoothedReleaseCoeff);
+            newGain = juce::jmin(newGain, currentGain * maxReleasePerSample);
+            currentGain = newGain;
         }
 
         currentGain = juce::jlimit(0.0001f, 1.0f, currentGain);
 
-        for (int os = 0; os < oversamplingFactor; ++os) {
-            const int sampleIndex = i * oversamplingFactor + os;
-            for (int ch = 0; ch < numChannels; ++ch) {
-                const float sample =
-                    oversampledBlock.getSample((size_t) ch, (size_t) sampleIndex);
-                delayBuffer[(size_t) ch][(size_t) delayWritePos] = sample;
-
-                const int readPos =
-                    (delayWritePos - lookAheadSamplesOversampled + bufSize) % bufSize;
-                oversampledBlock.setSample(
-                    (size_t) ch, (size_t) sampleIndex,
-                    delayBuffer[(size_t) ch][(size_t) readPos] * currentGain);
-            }
-            delayWritePos = (delayWritePos + 1) % bufSize;
+        const int readPos = (delayWritePos - lookAheadSamples + bufSize) % bufSize;
+        for (int ch = 0; ch < numChannels; ++ch) {
+            const float delayed = delayBuffer[(size_t) ch][(size_t) readPos];
+            buffer.setSample(ch, i, delayed * currentGain);
         }
 
         maxGr = juce::jmin(maxGr, currentGain);
+        delayWritePos = (delayWritePos + 1) % bufSize;
         scheduleReadPos = (scheduleReadPos + 1) % scheduleSize;
         ++samplesSinceFullSchedule;
     }
 
-    oversampler.processSamplesDown(outputBlock);
     truePeakGuard.process(buffer);
     maxGr = juce::jmin(
         maxGr,

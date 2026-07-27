@@ -3,7 +3,6 @@
 #include <JuceHeader.h>
 #include "DSP/LookAheadLimiter.h"
 #include "DSP/AdaptiveLowCut.h"
-#include "DSP/AdaptivePhaseRotator.h"
 #include <atomic>
 
 class MaxOxAudioProcessor : public juce::AudioProcessor
@@ -50,7 +49,6 @@ private:
 
     LookAheadLimiter limiter;
     AdaptiveLowCut adaptiveLowCut;
-    AdaptivePhaseRotator phaseRotator;
 
     double currentSampleRate = 48000.0;
 

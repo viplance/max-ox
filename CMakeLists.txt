@@ -39,8 +39,6 @@ target_sources(MaxOx PRIVATE
   Source/DSP/TruePeakGuard.h
   Source/DSP/AdaptiveLowCut.cpp
   Source/DSP/AdaptiveLowCut.h
-  Source/DSP/AdaptivePhaseRotator.cpp
-  Source/DSP/AdaptivePhaseRotator.h
   Source/UI/NeedleMeter.cpp
   Source/UI/NeedleMeter.h
   Source/UI/AnalogKnob.cpp
@@ -105,7 +103,12 @@ juce_add_console_app(MaxOxDSPTests
 )
 
 target_sources(MaxOxDSPTests PRIVATE
-  Tests/DSPTests.cpp
+  Tests/Main.cpp
+  Tests/LimiterTests.cpp
+  Tests/AdaptiveLowCutTests.cpp
+  Tests/PeakShaverTests.cpp
+  Tests/GainAnomalyTests.cpp
+  Tests/TransparencyTests.cpp
   Source/DSP/LookAheadLimiter.cpp
   Source/DSP/LookAheadLimiter.h
   Source/DSP/PerceptualPeakShaver.cpp
@@ -114,11 +117,9 @@ target_sources(MaxOxDSPTests PRIVATE
   Source/DSP/TruePeakGuard.h
   Source/DSP/AdaptiveLowCut.cpp
   Source/DSP/AdaptiveLowCut.h
-  Source/DSP/AdaptivePhaseRotator.cpp
-  Source/DSP/AdaptivePhaseRotator.h
 )
 
-target_include_directories(MaxOxDSPTests PRIVATE Source)
+target_include_directories(MaxOxDSPTests PRIVATE Source Tests)
 juce_generate_juce_header(MaxOxDSPTests)
 
 target_link_libraries(MaxOxDSPTests PRIVATE

@@ -24,17 +24,13 @@ private:
     static constexpr float kFastReleaseMs = 35.0f;
     static constexpr float kSlowReleaseMs = 180.0f;
     static constexpr float kKneeDb = 0.5f;
-    static constexpr int kOversampleFactor = 8;
     static constexpr float kRmsWindowMs = 50.0f;
-    // Downsampling filters can ring above the gain-limited oversampled signal.
-    // This guard keeps the reconstructed output at the public dBTP ceiling.
-    static constexpr float kReconstructionMarginDb = 0.0f;
+    static constexpr float kMaxReleaseRateDbPerSec = 80.0f;
 
     float computeGain(float peakDb) const;
 
     double currentSampleRate = 44100.0;
     int lookAheadSamples = 0;
-    int lookAheadSamplesOversampled = 0;
     int latencySamples = 0;
 
     float releaseCoeff = 0.0f;
@@ -42,6 +38,9 @@ private:
     float slowReleaseCoeff = 0.0f;
     float rmsCoeff = 0.0f;
     float rmsEnvelope = 0.0f;
+    float smoothedReleaseCoeff = 0.0f;
+    float releaseCoeffSmoothing = 0.0f;
+    float maxReleasePerSample = 1.0f;
 
     std::array<std::vector<float>, kMaxChans> delayBuffer;
     int delayWritePos = 0;
@@ -54,8 +53,6 @@ private:
 
     float currentGain = 1.0f;
 
-    juce::dsp::Oversampling<float> oversampler { kMaxChans, 3,
-        juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, true };
     PerceptualPeakShaver peakShaver;
     TruePeakGuard truePeakGuard;
 
