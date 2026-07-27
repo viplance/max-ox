@@ -1,5 +1,17 @@
 #include "TestHelpers.h"
 
+namespace {
+
+float windowRms(const std::vector<float>& signal, int begin, int length)
+{
+    double energy = 0.0;
+    for (int i = begin; i < begin + length; ++i)
+        energy += (double) signal[(size_t) i] * signal[(size_t) i];
+    return (float) std::sqrt(energy / length);
+}
+
+}
+
 bool runLimiterTests()
 {
     using namespace test;
@@ -71,6 +83,40 @@ bool runLimiterTests()
                         "true peak must remain at or below the public ceiling");
         passed &= check(truePeakDb >= kCeilingDb - 0.1f,
                         "true-peak protection must not waste material headroom");
+    }
+
+    {
+        LookAheadLimiter limiter;
+        limiter.prepare(kSampleRate, kBlockSize);
+        constexpr int length = 48000;
+        constexpr int peakPosition = 12000;
+        Stereo transient {
+            std::vector<float>(length, 0.0f),
+            std::vector<float>(length, 0.0f)
+        };
+
+        for (int i = 0; i < length; ++i) {
+            const float carrier = 0.5f * std::sin(
+                2.0 * juce::MathConstants<double>::pi * 1000.0
+                * (double) i / kSampleRate);
+            transient[0][(size_t) i] = carrier;
+            transient[1][(size_t) i] = carrier;
+        }
+        transient[0][peakPosition] = 1.05f;
+        transient[1][peakPosition] = 1.05f;
+
+        const auto output = render(transient, limiter);
+        const int delayedPeak = peakPosition + limiter.getLatencySamples();
+        constexpr int window = 240;
+        const float before = windowRms(output[0], delayedPeak - 720, window);
+        const float after = windowRms(output[0], delayedPeak + 1440, window);
+        const float recoveryDb = juce::Decibels::gainToDecibels(
+            after / before, -100.0f);
+
+        std::cout << "  shallow transient recovery at 30ms: "
+                  << recoveryDb << " dB\n";
+        passed &= check(recoveryDb > -0.2f,
+                        "shallow peak limiting must recover within 30 ms");
     }
 
     return passed;

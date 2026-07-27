@@ -20,12 +20,15 @@ private:
     static constexpr int kMaxChans = 2;
     static constexpr float kCeilingDb = -0.1f;
     static constexpr float kLookAheadMs = 5.0f;
-    static constexpr float kReleaseMs = 90.0f;
-    static constexpr float kFastReleaseMs = 35.0f;
-    static constexpr float kSlowReleaseMs = 180.0f;
+    static constexpr float kReleaseMs = 55.0f;
+    static constexpr float kFastReleaseMs = 18.0f;
+    static constexpr float kSlowReleaseMs = 120.0f;
+    static constexpr float kShallowReleaseMs = 15.0f;
+    static constexpr float kShallowReductionDb = 0.75f;
+    static constexpr float kReleaseSmoothingMs = 5.0f;
     static constexpr float kKneeDb = 0.5f;
     static constexpr float kRmsWindowMs = 50.0f;
-    static constexpr float kMaxReleaseRateDbPerSec = 80.0f;
+    static constexpr float kMaxReleaseRateDbPerSec = 160.0f;
 
     float computeGain(float peakDb) const;
 
@@ -36,6 +39,7 @@ private:
     float releaseCoeff = 0.0f;
     float fastReleaseCoeff = 0.0f;
     float slowReleaseCoeff = 0.0f;
+    float shallowReleaseCoeff = 0.0f;
     float rmsCoeff = 0.0f;
     float rmsEnvelope = 0.0f;
     float smoothedReleaseCoeff = 0.0f;

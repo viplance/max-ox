@@ -22,7 +22,9 @@ private:
     static constexpr int kMaxChans = 2;
     static constexpr float kCeilingDb = -0.11f;
     static constexpr float kAttackMs = 2.0f;
-    static constexpr float kReleaseMs = 60.0f;
+    static constexpr float kReleaseMs = 35.0f;
+    static constexpr float kShallowReleaseMs = 12.0f;
+    static constexpr float kShallowReductionDb = 0.5f;
 
     juce::dsp::Oversampling<float> detector { kMaxChans, 3,
         juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, true };
@@ -38,6 +40,7 @@ private:
     float lastScheduledTarget = 1.0f;
     float currentGain = 1.0f;
     float releaseCoeff = 0.0f;
+    float shallowReleaseCoeff = 0.0f;
     float ceiling = 1.0f;
 
     std::atomic<float> gainReductionDb { 0.0f };

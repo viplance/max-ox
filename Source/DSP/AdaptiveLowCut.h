@@ -19,12 +19,20 @@ private:
     static constexpr float kNarrowQ = 6.0f;
     static constexpr float kWideQ = 0.8f;
     static constexpr float kPeakThreshold = 0.72f;
-    static constexpr float kMaxReduction = 0.55f;
-    static constexpr float kInfrasonicCutoffHz = 10.0f;
+    static constexpr float kBandMaxReduction[kBands] = {
+        0.45f, 0.32f, 0.23f, 0.15f, 0.08f
+    };
+    static constexpr int kInfrasonicStages = 2;
+    static constexpr float kInfrasonicCutoffHz = 30.0f;
+    static constexpr float kButterworthQ[kInfrasonicStages] = {
+        0.5411961f, 1.3065630f
+    };
 
     double currentSampleRate = 44100.0;
 
-    std::array<juce::dsp::IIR::Filter<float>, kMaxChans> infrasonicFilters;
+    std::array<
+        std::array<juce::dsp::IIR::Filter<float>, kInfrasonicStages>,
+        kMaxChans> infrasonicFilters;
     std::array<std::array<juce::dsp::IIR::Filter<float>, kBands>, kMaxChans> narrowFilters;
     std::array<std::array<juce::dsp::IIR::Filter<float>, kBands>, kMaxChans> wideFilters;
 

@@ -31,8 +31,9 @@ void LookAheadLimiter::prepare(double sampleRate, int maxBlockSize)
     releaseCoeff = timeConstant(kReleaseMs);
     fastReleaseCoeff = timeConstant(kFastReleaseMs);
     slowReleaseCoeff = timeConstant(kSlowReleaseMs);
+    shallowReleaseCoeff = timeConstant(kShallowReleaseMs);
     rmsCoeff = timeConstant(kRmsWindowMs);
-    releaseCoeffSmoothing = timeConstant(15.0f);
+    releaseCoeffSmoothing = timeConstant(kReleaseSmoothingMs);
     smoothedReleaseCoeff = releaseCoeff;
     maxReleasePerSample = juce::Decibels::decibelsToGain(
         kMaxReleaseRateDbPerSec / (float) sampleRate);
@@ -158,6 +159,11 @@ void LookAheadLimiter::process(juce::AudioBuffer<float>& buffer)
                     releaseCoeff
                     + amount * (fastReleaseCoeff - releaseCoeff);
             }
+            if (currentGain >= juce::Decibels::decibelsToGain(
+                    -kShallowReductionDb))
+                targetRelease = juce::jmin(
+                    targetRelease, shallowReleaseCoeff);
+
             smoothedReleaseCoeff =
                 releaseCoeffSmoothing * smoothedReleaseCoeff
                 + (1.0f - releaseCoeffSmoothing) * targetRelease;

@@ -7,13 +7,16 @@ void AdaptiveLowCut::prepare(double sampleRate, [[maybe_unused]] int maxBlockSiz
 
     envAlpha = 1.0f - std::exp(-1.0f / (float)(sampleRate * 0.012));
     gainAttackAlpha = 1.0f - std::exp(-1.0f / (float)(sampleRate * 0.020));
-    gainReleaseAlpha = 1.0f - std::exp(-1.0f / (float)(sampleRate * 0.080));
+    gainReleaseAlpha = 1.0f - std::exp(-1.0f / (float)(sampleRate * 0.050));
     fullBandRmsAlpha = 1.0f - std::exp(-1.0f / (float)(sampleRate * 0.050));
 
     for (int ch = 0; ch < kMaxChans; ++ch) {
-        infrasonicFilters[(size_t) ch].coefficients =
-            juce::dsp::IIR::Coefficients<float>::makeHighPass(
-                sampleRate, kInfrasonicCutoffHz);
+        for (int stage = 0; stage < kInfrasonicStages; ++stage)
+            infrasonicFilters[(size_t) ch][(size_t) stage].coefficients =
+                juce::dsp::IIR::Coefficients<float>::makeHighPass(
+                    sampleRate,
+                    kInfrasonicCutoffHz,
+                    kButterworthQ[stage]);
 
         for (int b = 0; b < kBands; ++b) {
             auto narrowCoeffs = juce::dsp::IIR::Coefficients<float>::makeBandPass(
@@ -32,7 +35,8 @@ void AdaptiveLowCut::prepare(double sampleRate, [[maybe_unused]] int maxBlockSiz
 void AdaptiveLowCut::reset()
 {
     for (int ch = 0; ch < kMaxChans; ++ch) {
-        infrasonicFilters[(size_t) ch].reset();
+        for (auto& filter : infrasonicFilters[(size_t) ch])
+            filter.reset();
         fullBandRmsEnv[(size_t) ch] = 0.0f;
 
         for (int b = 0; b < kBands; ++b) {
@@ -52,9 +56,13 @@ void AdaptiveLowCut::process(float* L, float* R, int numSamples, int numChannels
 
     for (int i = 0; i < numSamples; ++i) {
         std::array<float, kMaxChans> x {
-            infrasonicFilters[0].processSample(L[i]),
-            numChannels > 1 ? infrasonicFilters[1].processSample(R[i]) : 0.0f
+            L[i],
+            numChannels > 1 ? R[i] : 0.0f
         };
+        for (int ch = 0; ch < numChannels; ++ch)
+            for (auto& filter : infrasonicFilters[(size_t) ch])
+                x[(size_t) ch] = filter.processSample(x[(size_t) ch]);
+
         std::array<std::array<float, kBands>, kMaxChans> narrowSample {};
 
         for (int ch = 0; ch < numChannels; ++ch) {
@@ -103,10 +111,8 @@ void AdaptiveLowCut::process(float* L, float* R, int numSamples, int numChannels
                     juce::jlimit(0.0f, 1.0f, bandToFull * 2.0f));
             }
 
-            const float frequencyWeight =
-                1.0f - (float) b / (float) kBands;
             const float proposedReduction =
-                kMaxReduction * resonance * energyWeight * frequencyWeight;
+                kBandMaxReduction[b] * resonance * energyWeight;
 
             float originalPeak = 0.0f;
             float candidatePeak = 0.0f;

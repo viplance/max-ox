@@ -28,6 +28,8 @@ void TruePeakGuard::prepare(double sampleRate, int maxBlockSize)
 
     releaseCoeff = std::exp(
         -1.0f / (float) (sampleRate * kReleaseMs / 1000.0));
+    shallowReleaseCoeff = std::exp(
+        -1.0f / (float) (sampleRate * kShallowReleaseMs / 1000.0));
     reset();
 }
 
@@ -104,10 +106,16 @@ void TruePeakGuard::process(juce::AudioBuffer<float>& buffer)
         gainSchedule[(size_t) scheduleReadPos] = 1.0f;
         if (scheduledGain < currentGain)
             currentGain = scheduledGain;
-        else
+        else {
+            const float activeReleaseCoeff =
+                currentGain >= juce::Decibels::decibelsToGain(
+                    -kShallowReductionDb)
+                    ? shallowReleaseCoeff
+                    : releaseCoeff;
             currentGain =
-                releaseCoeff * currentGain
-                + (1.0f - releaseCoeff) * scheduledGain;
+                activeReleaseCoeff * currentGain
+                + (1.0f - activeReleaseCoeff) * scheduledGain;
+        }
 
         for (int ch = 0; ch < numChannels; ++ch) {
             const float input = buffer.getSample(ch, i);
