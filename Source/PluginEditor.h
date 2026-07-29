@@ -2,6 +2,7 @@
 
 #include "PluginConstants.h"
 #include "PluginProcessor.h"
+#include "DonationTracker.h"
 #include "UI/NeedleMeter.h"
 #include "UI/AnalogKnob.h"
 #include <JuceHeader.h>
@@ -32,13 +33,14 @@ public:
     void mouseDown(const juce::MouseEvent&) override;
 
     std::function<void()> onDismiss;
+    std::function<void()> onDonateClicked;
 
 private:
     juce::Rectangle<int> getCardBounds() const;
     void dismiss();
 
     juce::Label message;
-    juce::TextButton donateButton { "Donate to us" };
+    juce::TextButton donateButton { "Donate to me" };
     PopupCloseButton closeButton;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SupportPromptComponent)
@@ -58,6 +60,10 @@ public:
 
 private:
     void timerCallback() override;
+    void applyDonatedState();
+
+    static constexpr int kDonationCheckIntervalFrames = 900;
+    int donationCheckCounter = 0;
     void drawChassis(juce::Graphics& g, juce::Rectangle<float> bounds);
     void drawScrews(juce::Graphics& g, juce::Rectangle<float> bounds);
 
@@ -65,7 +71,7 @@ private:
     AnalogKnobLookAndFeel knobLookAndFeel;
 
     DonateHyperlinkButton donateLink {
-        "Donate to us",
+        "Donate to me",
         juce::URL(MaxOxConfig::kDonateUrl)
     };
     SupportPromptComponent supportPrompt;
@@ -76,6 +82,7 @@ private:
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> gainAttachment;
     std::unique_ptr<SupportPromptState> supportPromptState;
+    DonationTracker donationTracker;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MaxOxAudioProcessorEditor)
 };

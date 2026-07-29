@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "DonationTracker.h"
 #include <cmath>
 #include <cstdint>
 
@@ -210,7 +211,8 @@ SupportPromptComponent::SupportPromptComponent()
         juce::TextButton::textColourOnId,
         juce::Colours::white);
     donateButton.onClick = [this] {
-        juce::URL(MaxOxConfig::kDonateUrl).launchInDefaultBrowser();
+        if (onDonateClicked)
+            onDonateClicked();
         dismiss();
     };
     addAndMakeVisible(donateButton);
@@ -293,6 +295,10 @@ MaxOxAudioProcessorEditor::MaxOxAudioProcessorEditor(MaxOxAudioProcessor& p)
     donateLink.setColour(
         juce::HyperlinkButton::textColourId,
         juce::Colour::fromRGB(225, 215, 195).withAlpha(0.78f));
+    donateLink.setURL({});
+    donateLink.onClick = [this] {
+        donationTracker.openDonationPage();
+    };
     addAndMakeVisible(donateLink);
 
     gainAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
@@ -308,6 +314,14 @@ MaxOxAudioProcessorEditor::MaxOxAudioProcessorEditor(MaxOxAudioProcessor& p)
             supportPromptState->shortenRemainingTimeOnClose(
                 juce::Time::currentTimeMillis());
     };
+    supportPrompt.onDonateClicked = [this] {
+        donationTracker.openDonationPage();
+    };
+
+    if (donationTracker.hasDonated())
+        applyDonatedState();
+
+    donationTracker.checkDonationStatusAsync();
 
     setSize(680, 410);
     startTimerHz(30);
@@ -387,6 +401,19 @@ void MaxOxAudioProcessorEditor::timerCallback()
     outputMeter.setLevelDb(audioProcessor.getOutputLevelDb());
     grMeter.setLevelDb(audioProcessor.getGainReductionDb());
 
+    if (donationTracker.hasDonated())
+    {
+        if (donateLink.isVisible())
+            applyDonatedState();
+        return;
+    }
+
+    if (++donationCheckCounter >= kDonationCheckIntervalFrames)
+    {
+        donationCheckCounter = 0;
+        donationTracker.checkDonationStatusAsync();
+    }
+
     if (!supportPrompt.isVisible()
         && supportPromptState != nullptr
         && supportPromptState->isDue(juce::Time::currentTimeMillis())) {
@@ -395,6 +422,12 @@ void MaxOxAudioProcessorEditor::timerCallback()
         supportPrompt.setVisible(true);
         supportPrompt.toFront(false);
     }
+}
+
+void MaxOxAudioProcessorEditor::applyDonatedState()
+{
+    donateLink.setVisible(false);
+    supportPrompt.setVisible(false);
 }
 
 void MaxOxAudioProcessorEditor::drawChassis(juce::Graphics& g, juce::Rectangle<float> bounds)

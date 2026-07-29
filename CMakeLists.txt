@@ -32,6 +32,9 @@ target_sources(MaxOx PRIVATE
   Source/PluginConstants.h
   Source/PluginEditor.cpp
   Source/PluginEditor.h
+  Source/DonationTracker.cpp
+  Source/DonationTracker.h
+  Source/MachineId_mac.mm
   Source/DSP/LookAheadLimiter.cpp
   Source/DSP/LookAheadLimiter.h
   Source/DSP/PerceptualPeakShaver.cpp
@@ -70,6 +73,7 @@ target_link_libraries(MaxOx PRIVATE
   juce::juce_audio_devices
   juce::juce_dsp
   "-framework Accelerate"
+  "-framework IOKit"
 )
 
 set_target_properties(MaxOx PROPERTIES

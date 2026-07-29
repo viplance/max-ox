@@ -2,3 +2,5 @@ build/
 vendor/
 .DS_Store
 *.user
+node_modules/
+destream_api_en.pdf
