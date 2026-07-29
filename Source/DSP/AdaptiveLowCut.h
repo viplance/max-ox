@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 #include <array>
+#include <vector>
 
 class AdaptiveLowCut
 {
@@ -11,6 +12,7 @@ public:
     void process(float* L, float* R, int numSamples, int numChannels);
 
     float getLowCutActivity() const { return activity.load(std::memory_order_relaxed); }
+    int getLatencySamples() const { return lookaheadSamples; }
 
 private:
     static constexpr int kMaxChans = 2;
@@ -27,8 +29,14 @@ private:
     static constexpr float kButterworthQ[kInfrasonicStages] = {
         0.5411961f, 1.3065630f
     };
+    static constexpr float kLookaheadMs = 5.0f;
+    static constexpr float kReleaseMs = 5.0f;
 
     double currentSampleRate = 44100.0;
+    int lookaheadSamples = 0;
+
+    std::array<std::vector<float>, kMaxChans> delayBuffer;
+    int delayWritePos = 0;
 
     std::array<
         std::array<juce::dsp::IIR::Filter<float>, kInfrasonicStages>,
@@ -41,8 +49,7 @@ private:
     std::array<float, kBands> bandGain {};
 
     float envAlpha = 0.0f;
-    float gainAttackAlpha = 0.0f;
-    float gainReleaseAlpha = 0.0f;
+    float gainAlpha = 0.0f;
 
     std::array<float, kMaxChans> fullBandRmsEnv {};
     float fullBandRmsAlpha = 0.0f;

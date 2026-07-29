@@ -4,13 +4,15 @@
 void AdaptiveLowCut::prepare(double sampleRate, [[maybe_unused]] int maxBlockSize)
 {
     currentSampleRate = sampleRate;
+    lookaheadSamples = (int) std::round(sampleRate * kLookaheadMs / 1000.0);
 
     envAlpha = 1.0f - std::exp(-1.0f / (float)(sampleRate * 0.012));
-    gainAttackAlpha = 1.0f - std::exp(-1.0f / (float)(sampleRate * 0.020));
-    gainReleaseAlpha = 1.0f - std::exp(-1.0f / (float)(sampleRate * 0.050));
+    gainAlpha = 1.0f - std::exp(-1.0f / (float)(sampleRate * kReleaseMs / 1000.0));
     fullBandRmsAlpha = 1.0f - std::exp(-1.0f / (float)(sampleRate * 0.050));
 
     for (int ch = 0; ch < kMaxChans; ++ch) {
+        delayBuffer[(size_t) ch].assign((size_t) lookaheadSamples, 0.0f);
+
         for (int stage = 0; stage < kInfrasonicStages; ++stage)
             infrasonicFilters[(size_t) ch][(size_t) stage].coefficients =
                 juce::dsp::IIR::Coefficients<float>::makeHighPass(
@@ -37,6 +39,8 @@ void AdaptiveLowCut::reset()
     for (int ch = 0; ch < kMaxChans; ++ch) {
         for (auto& filter : infrasonicFilters[(size_t) ch])
             filter.reset();
+        std::fill(delayBuffer[(size_t) ch].begin(),
+                  delayBuffer[(size_t) ch].end(), 0.0f);
         fullBandRmsEnv[(size_t) ch] = 0.0f;
 
         for (int b = 0; b < kBands; ++b) {
@@ -46,6 +50,7 @@ void AdaptiveLowCut::reset()
             wideEnv[(size_t)ch][(size_t)b] = 0.0f;
         }
     }
+    delayWritePos = 0;
     bandGain.fill(1.0f);
     activity.store(0.0f, std::memory_order_relaxed);
 }
@@ -59,10 +64,22 @@ void AdaptiveLowCut::process(float* L, float* R, int numSamples, int numChannels
             L[i],
             numChannels > 1 ? R[i] : 0.0f
         };
+
+        // Infrasonic HP on live signal
         for (int ch = 0; ch < numChannels; ++ch)
             for (auto& filter : infrasonicFilters[(size_t) ch])
                 x[(size_t) ch] = filter.processSample(x[(size_t) ch]);
 
+        // Read delayed sample, write current into delay line
+        const int readPos = delayWritePos;
+        std::array<float, kMaxChans> delayed {};
+        for (int ch = 0; ch < numChannels; ++ch) {
+            delayed[(size_t) ch] = delayBuffer[(size_t) ch][(size_t) readPos];
+            delayBuffer[(size_t) ch][(size_t) readPos] = x[(size_t) ch];
+        }
+        delayWritePos = (delayWritePos + 1) % lookaheadSamples;
+
+        // Analyse the live (future) signal
         std::array<std::array<float, kBands>, kMaxChans> narrowSample {};
 
         for (int ch = 0; ch < numChannels; ++ch) {
@@ -86,6 +103,7 @@ void AdaptiveLowCut::process(float* L, float* R, int numSamples, int numChannels
             }
         }
 
+        // Compute gain from live analysis
         for (int b = 0; b < kBands; ++b) {
             float resonance = 0.0f;
             float energyWeight = 0.0f;
@@ -134,24 +152,23 @@ void AdaptiveLowCut::process(float* L, float* R, int numSamples, int numChannels
                 juce::jlimit(0.0f, 1.0f, relativeBenefit * 8.0f);
             const float targetGain =
                 1.0f - proposedReduction * benefitWeight;
-            const float alpha =
-                targetGain < bandGain[(size_t) b]
-                    ? gainAttackAlpha
-                    : gainReleaseAlpha;
+
             bandGain[(size_t) b] +=
-                alpha * (targetGain - bandGain[(size_t) b]);
+                gainAlpha * (targetGain - bandGain[(size_t) b]);
 
             const float appliedReduction = 1.0f - bandGain[(size_t) b];
+
+            // Apply reduction to the DELAYED signal
             for (int ch = 0; ch < numChannels; ++ch)
-                x[(size_t) ch] -=
+                delayed[(size_t) ch] -=
                     appliedReduction * narrowSample[(size_t) ch][(size_t) b];
 
             maxActivity = juce::jmax(maxActivity, appliedReduction);
         }
 
-        L[i] = x[0];
+        L[i] = delayed[0];
         if (numChannels > 1)
-            R[i] = x[1];
+            R[i] = delayed[1];
     }
 
     activity.store(maxActivity, std::memory_order_relaxed);
