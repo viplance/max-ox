@@ -15,7 +15,7 @@ void NeedleMeter::setLevelDb(float db)
     }
 
     const auto next = juce::jlimit(minDb, maxDb, db);
-    smoothedDb += 0.25f * (next - smoothedDb);
+    smoothedDb += kVisualSmoothing * (next - smoothedDb);
 
     if (std::abs(smoothedDb - levelDb) > 0.02f) {
         levelDb = smoothedDb;
@@ -61,7 +61,7 @@ void NeedleMeter::drawFaceplate(juce::Graphics& g, juce::Rectangle<float> bounds
 
 void NeedleMeter::drawDbLabel(juce::Graphics& g, juce::Point<float> pivot)
 {
-    g.setFont(juce::Font(juce::FontOptions(9.0f, juce::Font::italic)));
+    g.setFont(juce::Font(juce::FontOptions(10.0f, juce::Font::italic)));
     g.setColour(juce::Colour::fromRGB(60, 50, 40).withAlpha(0.7f));
     g.drawText("dB",
         juce::Rectangle<float>(pivot.x - 12.0f, pivot.y - 18.0f, 24.0f, 12.0f),
@@ -102,7 +102,7 @@ void NeedleMeter::drawScaleMarks(juce::Graphics& g, juce::Point<float> pivot, fl
             g.drawLine(innerPt.x, innerPt.y, outerPt.x, outerPt.y, m.major ? 1.5f : 0.8f);
 
             if (m.major && m.label != nullptr) {
-                g.setFont(juce::Font(juce::FontOptions(9.0f)));
+                g.setFont(juce::Font(juce::FontOptions(10.0f)));
                 g.setColour(juce::Colour::fromRGB(60, 50, 40).withAlpha(0.9f));
                 g.drawText(m.label,
                     juce::Rectangle<float>(labelPt.x - 14.0f, labelPt.y - 6.0f, 28.0f, 12.0f),
@@ -120,8 +120,6 @@ void NeedleMeter::drawScaleMarks(juce::Graphics& g, juce::Point<float> pivot, fl
             { -6.0f, "-6", true },
             { -3.0f, "-3", true },
             { 0.0f, "0", true },
-            { 3.0f, "+3", true },
-            { 6.0f, "+6", true },
         };
 
         for (auto& m : marks) {
@@ -144,12 +142,22 @@ void NeedleMeter::drawScaleMarks(juce::Graphics& g, juce::Point<float> pivot, fl
             g.drawLine(innerPt.x, innerPt.y, outerPt.x, outerPt.y, m.major ? 1.5f : 0.8f);
 
             if (m.major && m.label != nullptr) {
-                g.setFont(juce::Font(juce::FontOptions(9.0f)));
+                g.setFont(juce::Font(juce::FontOptions(10.0f)));
                 g.setColour(isRed
                     ? juce::Colour::fromRGB(180, 50, 40).withAlpha(0.9f)
                     : juce::Colour::fromRGB(60, 50, 40).withAlpha(0.9f));
+
+                auto labelOffset = juce::Point<float>();
+                if (m.db == -3.0f)
+                    labelOffset = { 2.0f, 1.0f };
+                else if (m.db == 0.0f)
+                    labelOffset = { 2.0f, 3.0f };
+
                 g.drawText(m.label,
-                    juce::Rectangle<float>(labelPt.x - 14.0f, labelPt.y - 6.0f, 28.0f, 12.0f),
+                    juce::Rectangle<float>(
+                        labelPt.x - 14.0f + labelOffset.x,
+                        labelPt.y - 6.0f + labelOffset.y,
+                        28.0f, 12.0f),
                     juce::Justification::centred);
             }
         }

@@ -29,10 +29,18 @@ juce_add_plugin(MaxOx
 target_sources(MaxOx PRIVATE
   Source/PluginProcessor.cpp
   Source/PluginProcessor.h
+  Source/PluginConstants.h
   Source/PluginEditor.cpp
   Source/PluginEditor.h
+  Source/DonationTracker.cpp
+  Source/DonationTracker.h
+  Source/MachineId_mac.mm
   Source/DSP/LookAheadLimiter.cpp
   Source/DSP/LookAheadLimiter.h
+  Source/DSP/PerceptualPeakShaver.cpp
+  Source/DSP/PerceptualPeakShaver.h
+  Source/DSP/TruePeakGuard.cpp
+  Source/DSP/TruePeakGuard.h
   Source/DSP/AdaptiveLowCut.cpp
   Source/DSP/AdaptiveLowCut.h
   Source/UI/NeedleMeter.cpp
@@ -60,10 +68,12 @@ target_link_libraries(MaxOx PRIVATE
   juce::juce_events
   juce::juce_core
   juce::juce_data_structures
+  juce::juce_cryptography
   juce::juce_audio_basics
   juce::juce_audio_devices
   juce::juce_dsp
   "-framework Accelerate"
+  "-framework IOKit"
 )
 
 set_target_properties(MaxOx PROPERTIES
@@ -91,3 +101,47 @@ if (TARGET MaxOx_VST3)
     VERBATIM
   )
 endif()
+
+enable_testing()
+
+juce_add_console_app(MaxOxDSPTests
+  PRODUCT_NAME "MaxOx DSP Tests"
+)
+
+target_sources(MaxOxDSPTests PRIVATE
+  Tests/Main.cpp
+  Tests/LimiterTests.cpp
+  Tests/AdaptiveLowCutTests.cpp
+  Tests/PeakShaverTests.cpp
+  Tests/GainAnomalyTests.cpp
+  Tests/TransparencyTests.cpp
+  Source/DSP/LookAheadLimiter.cpp
+  Source/DSP/LookAheadLimiter.h
+  Source/DSP/PerceptualPeakShaver.cpp
+  Source/DSP/PerceptualPeakShaver.h
+  Source/DSP/TruePeakGuard.cpp
+  Source/DSP/TruePeakGuard.h
+  Source/DSP/AdaptiveLowCut.cpp
+  Source/DSP/AdaptiveLowCut.h
+)
+
+target_include_directories(MaxOxDSPTests PRIVATE Source Tests)
+juce_generate_juce_header(MaxOxDSPTests)
+
+target_link_libraries(MaxOxDSPTests PRIVATE
+  juce::juce_audio_basics
+  juce::juce_dsp
+)
+
+set_target_properties(MaxOxDSPTests PROPERTIES
+  CXX_STANDARD 20
+  CXX_STANDARD_REQUIRED ON
+)
+
+if (MSVC)
+  target_compile_options(MaxOxDSPTests PRIVATE /W4)
+else()
+  target_compile_options(MaxOxDSPTests PRIVATE -Wall -Wextra -Wshadow)
+endif()
+
+add_test(NAME MaxOxDSPTests COMMAND MaxOxDSPTests)

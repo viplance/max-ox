@@ -15,7 +15,10 @@ void AnalogKnobLookAndFeel::drawRotarySlider(
 {
     auto bounds = juce::Rectangle<float>((float)x, (float)y, (float)width, (float)height);
     auto centre = bounds.getCentre();
-    float radius = juce::jmin(bounds.getWidth(), bounds.getHeight()) * 0.38f;
+    centre.y += 24.0f;
+    float radius = juce::jmin(
+        45.0f,
+        juce::jmin(bounds.getWidth(), bounds.getHeight()) * 0.38f);
 
     {
         juce::ColourGradient shadow(
@@ -83,10 +86,13 @@ void AnalogKnobLookAndFeel::drawRotarySlider(
         if (isMajor) {
             float dbVal = tickNorm * 24.0f;
             auto labelPt = centre + juce::Point<float>(std::sin(tickAngle), -std::cos(tickAngle)) * (tickOuterRadius + 10.0f);
-            g.setFont(juce::Font(juce::FontOptions(10.0f)));
+            auto labelBounds = juce::Rectangle<float>(
+                labelPt.x - 16.0f, labelPt.y - 6.0f, 32.0f, 12.0f);
+
+            g.setFont(juce::Font(juce::FontOptions(11.0f)));
             g.setColour(juce::Colour::fromRGB(200, 190, 170).withAlpha(0.85f));
             g.drawText(juce::String((int)dbVal),
-                juce::Rectangle<float>(labelPt.x - 14.0f, labelPt.y - 6.0f, 28.0f, 12.0f),
+                labelBounds,
                 juce::Justification::centred);
         }
     }

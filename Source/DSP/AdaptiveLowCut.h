@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 #include <array>
+#include <vector>
 
 class AdaptiveLowCut
 {
@@ -11,6 +12,7 @@ public:
     void process(float* L, float* R, int numSamples, int numChannels);
 
     float getLowCutActivity() const { return activity.load(std::memory_order_relaxed); }
+    int getLatencySamples() const { return lookaheadSamples; }
 
 private:
     static constexpr int kMaxChans = 2;
@@ -19,21 +21,37 @@ private:
     static constexpr float kNarrowQ = 6.0f;
     static constexpr float kWideQ = 0.8f;
     static constexpr float kPeakThreshold = 0.72f;
-    static constexpr float kMaxReduction = 0.90f;
+    static constexpr float kBandMaxReduction[kBands] = {
+        0.45f, 0.32f, 0.23f, 0.15f, 0.08f
+    };
+    static constexpr int kInfrasonicStages = 2;
+    static constexpr float kInfrasonicCutoffHz = 30.0f;
+    static constexpr float kButterworthQ[kInfrasonicStages] = {
+        0.5411961f, 1.3065630f
+    };
+    static constexpr float kLookaheadMs = 5.0f;
+    static constexpr float kReleaseMs = 5.0f;
 
     double currentSampleRate = 44100.0;
+    int lookaheadSamples = 0;
 
+    std::array<std::vector<float>, kMaxChans> delayBuffer;
+    int delayWritePos = 0;
+
+    std::array<
+        std::array<juce::dsp::IIR::Filter<float>, kInfrasonicStages>,
+        kMaxChans> infrasonicFilters;
     std::array<std::array<juce::dsp::IIR::Filter<float>, kBands>, kMaxChans> narrowFilters;
     std::array<std::array<juce::dsp::IIR::Filter<float>, kBands>, kMaxChans> wideFilters;
 
     std::array<std::array<float, kBands>, kMaxChans> narrowEnv {};
     std::array<std::array<float, kBands>, kMaxChans> wideEnv {};
-    std::array<std::array<float, kBands>, kMaxChans> bandGain {};
+    std::array<float, kBands> bandGain {};
 
     float envAlpha = 0.0f;
     float gainAlpha = 0.0f;
 
-    float fullBandRmsEnv = 0.0f;
+    std::array<float, kMaxChans> fullBandRmsEnv {};
     float fullBandRmsAlpha = 0.0f;
 
     std::atomic<float> activity { 0.0f };
