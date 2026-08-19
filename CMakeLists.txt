@@ -92,12 +92,26 @@ else()
 endif()
 
 if (TARGET MaxOx_VST3)
+  set(MAXOX_ENTITLEMENTS "${CMAKE_SOURCE_DIR}/Resources/MaxOx.entitlements")
+  set(MAXOX_SIGN_IDENTITY "$ENV{MAXOX_SIGN_IDENTITY}")
+  if (NOT MAXOX_SIGN_IDENTITY)
+    set(MAXOX_SIGN_IDENTITY "-")
+  endif()
+
   add_custom_command(TARGET MaxOx_VST3 POST_BUILD
-    COMMAND codesign --force --deep --sign -
+    COMMAND codesign --force --deep --strict
+      --options runtime
+      --timestamp
+      --entitlements "${MAXOX_ENTITLEMENTS}"
+      --sign "${MAXOX_SIGN_IDENTITY}"
       "$<TARGET_FILE_DIR:MaxOx_VST3>/../.."
-    COMMAND codesign --force --deep --sign -
+    COMMAND codesign --force --deep --strict
+      --options runtime
+      --timestamp
+      --entitlements "${MAXOX_ENTITLEMENTS}"
+      --sign "${MAXOX_SIGN_IDENTITY}"
       "$ENV{HOME}/Library/Audio/Plug-Ins/VST3/MaxOx.vst3"
-    COMMENT "Code-signing MaxOx VST3 bundle"
+    COMMENT "Code-signing MaxOx VST3 bundle (identity: ${MAXOX_SIGN_IDENTITY})"
     VERBATIM
   )
 endif()
